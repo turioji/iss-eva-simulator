@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ISS EVA SIMULATOR</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;}
+canvas{display:block;}
+
+#hud{position:fixed;inset:0;pointer-events:none;font-family:'Courier New',monospace;color:#00e8cc;font-size:12px;}
+.panel{position:absolute;background:rgba(0,14,18,0.82);border:1px solid rgba(0,232,204,0.22);padding:10px 14px;line-height:2.1;backdrop-filter:blur(8px);}
+.plabel{font-size:9px;letter-spacing:3px;color:rgba(0,232,204,0.40);margin-bottom:2px;}
+#p-iss{top:16px;left:16px;min-width:192px;}
+#p-eva{top:16px;right:16px;text-align:right;min-width:172px;}
+#p-mission{bottom:80px;left:16px;min-width:160px;}
+
+#xhair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:18px;height:18px;border:1px solid rgba(0,232,204,0.28);border-radius:50%;opacity:0;transition:opacity .5s;}
+#xhair.on{opacity:1;}
+#xhair::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;background:rgba(0,232,204,0.5);border-radius:50%;}
+
+#o2wrap{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);text-align:center;width:200px;opacity:0;transition:opacity .5s;}
+#o2wrap.on{opacity:1;}
+.blabel{font-size:9px;letter-spacing:2px;color:rgba(0,232,204,0.38);margin-bottom:4px;}
+.barbg{background:rgba(0,40,35,0.55);height:5px;border-radius:3px;}
+#o2fill{height:100%;border-radius:3px;background:#00e8cc;transition:width .4s,background .5s;}
+
+#ctrlhint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:1px;color:rgba(0,232,204,0.28);white-space:nowrap;opacity:0;transition:opacity .5s;}
+#ctrlhint.on{opacity:1;}
+#lockhint{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);font-size:11px;color:rgba(255,220,60,0.50);opacity:0;transition:opacity .4s;}
+#lockhint.on{opacity:1;}
+
+/* ─── Radio ─── */
+#radio{position:absolute;bottom:130px;left:50%;transform:translateX(-50%);background:rgba(0,20,30,0.82);border:1px solid rgba(0,232,204,0.25);padding:8px 18px;font-size:11px;letter-spacing:1px;color:#00e8cc;white-space:nowrap;opacity:0;transition:opacity .4s;border-radius:2px;pointer-events:none;}
+
+/* ─── Score / Combo ─── */
+#score-hud{position:absolute;top:50%;right:16px;transform:translateY(-50%);text-align:right;font-size:11px;opacity:0;transition:opacity .5s;}
+#score-hud.on{opacity:1;}
+#h-score{font-size:18px;color:#fff;letter-spacing:2px;}
+#h-combo{font-size:13px;color:#ffcc00;min-height:18px;}
+#h-hi{font-size:10px;color:rgba(255,255,255,0.35);}
+
+/* ─── Flash ─── */
+#flash{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .08s;}
+
+/* ─── Night overlay ─── */
+#night{position:fixed;inset:0;background:#000;pointer-events:none;opacity:0;transition:opacity 4s;}
+
+/* ─── Repair UI ─── */
+#repair-ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .3s;z-index:5;}
+#repair-ui.on{opacity:1;pointer-events:all;}
+#repair-box{background:rgba(0,20,30,0.90);border:1px solid rgba(0,232,204,0.35);padding:24px 36px;text-align:center;min-width:280px;font-family:'Courier New',monospace;}
+#repair-title{font-size:13px;letter-spacing:4px;color:#00e8cc;margin-bottom:8px;}
+#repair-type{font-size:11px;color:rgba(0,232,204,0.6);margin-bottom:16px;}
+#repair-hint{font-size:12px;color:#fff;margin-bottom:12px;min-height:18px;}
+#repair-bar-bg{background:rgba(0,40,35,0.7);height:8px;border-radius:4px;width:220px;margin:0 auto 8px;}
+#repair-bar{height:100%;border-radius:4px;background:#00e8cc;width:0%;transition:width .1s;}
+#repair-cancel{font-size:10px;color:rgba(255,255,255,0.3);margin-top:8px;}
+/* Panel/Antenna mini-game */
+#mini-slider{width:220px;height:32px;position:relative;margin:0 auto 8px;}
+#mini-track{width:100%;height:4px;background:rgba(255,255,255,0.15);border-radius:2px;position:absolute;top:50%;transform:translateY(-50%);}
+#mini-target{position:absolute;height:20px;width:10px;background:rgba(0,232,204,0.4);border:1px solid #00e8cc;top:50%;transform:translateY(-50%);border-radius:2px;}
+#mini-cursor{position:absolute;height:26px;width:4px;background:#fff;top:50%;transform:translateY(-50%) translateX(-50%);border-radius:2px;transition:left .1s;}
+
+/* ─── Debris warnings ─── */
+.dwarn{position:fixed;width:20px;height:20px;background:rgba(255,80,0,0.8);clip-path:polygon(50% 0%,100% 100%,0% 100%);animation:dwblink .4s alternate infinite;}
+@keyframes dwblink{to{opacity:0.2;}}
+
+/* ─── Floating score ─── */
+.fscore{position:fixed;font-family:'Courier New',monospace;font-size:14px;color:#ffcc00;pointer-events:none;animation:fsrise 1.5s ease-out forwards;}
+@keyframes fsrise{0%{opacity:1;transform:translateY(0);}100%{opacity:0;transform:translateY(-60px);}}
+
+/* ─── OVERLAY ─── */
+#overlay{position:fixed;inset:0;z-index:10;background:radial-gradient(ellipse at 48% 58%,rgba(0,6,24,0.90),rgba(0,0,0,0.96));display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;transition:opacity .7s;}
+#overlay h1{font-family:'Courier New',monospace;font-size:26px;letter-spacing:7px;color:#00e8cc;text-shadow:0 0 44px rgba(0,232,204,0.30);margin-bottom:6px;}
+.osub{font-family:'Courier New',monospace;font-size:11px;color:rgba(255,255,255,0.34);letter-spacing:2px;margin:3px 0;}
+#issbox{margin:22px 0;padding:13px 24px;border:1px solid rgba(0,232,204,0.16);background:rgba(0,22,18,0.65);font-family:'Courier New',monospace;font-size:12px;color:#00e8cc;line-height:2.1;min-width:296px;}
+#startbtn{padding:13px 48px;background:transparent;border:1.5px solid #00e8cc;color:#00e8cc;font-family:'Courier New',monospace;font-size:15px;letter-spacing:3px;cursor:pointer;transition:all .22s;}
+#startbtn:hover{background:#00e8cc;color:#000;box-shadow:0 0 28px rgba(0,232,204,0.38);}
+.okeys{margin-top:20px;font-family:'Courier New',monospace;font-size:10px;color:rgba(255,255,255,0.20);line-height:2.5;letter-spacing:1px;}
+.k{border:1px solid rgba(255,255,255,0.16);padding:1px 6px;border-radius:2px;}
+
+/* ─── Game Over / Mission Clear ─── */
+.endscreen{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:'Courier New',monospace;background:radial-gradient(ellipse at center,rgba(0,0,20,0.95),rgba(0,0,0,0.98));}
+.endscreen h2{font-size:32px;letter-spacing:8px;margin-bottom:16px;}
+.endscreen .escore{font-size:14px;color:rgba(255,255,255,0.6);line-height:2.2;margin-bottom:24px;}
+.endbtn{padding:12px 40px;background:transparent;font-family:'Courier New',monospace;font-size:14px;letter-spacing:3px;cursor:pointer;border:1.5px solid currentColor;transition:all .2s;margin:6px;}
+#gameover-screen h2{color:#ff4444;}
+#gameover-screen .endbtn{color:#ff4444;}
+#gameover-screen .endbtn:hover{background:#ff4444;color:#000;}
+#clear-screen h2{color:#00e8cc;}
+#clear-screen .endbtn{color:#00e8cc;}
+#clear-screen .endbtn:hover{background:#00e8cc;color:#000;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="panel" id="p-iss">
+    <div class="plabel">🛰 ISS REALTIME</div>
+    <div id="h-lat">LAT  ——</div>
+    <div id="h-lng">LNG  ——</div>
+    <div id="h-alt">ALT  ——</div>
+    <div id="h-vel">VEL  ——</div>
+  </div>
+  <div class="panel" id="p-eva">
+    <div class="plabel">🧑‍🚀 EVA STATUS</div>
+    <div id="h-dist">DIST  —— m</div>
+    <div id="h-rcs">RCS   ——%</div>
+    <div id="h-o2">O₂ &nbsp;<span id="o2v">100</span>%</div>
+  </div>
+  <div class="panel" id="p-mission" style="display:none">
+    <div class="plabel">MISSION</div>
+    <div id="h-stage">STAGE 1</div>
+    <div id="h-repairs">REPAIRS 0/0</div>
+  </div>
+  <div id="score-hud">
+    <div id="h-hi">HI 0</div>
+    <div id="h-score">0</div>
+    <div id="h-combo"></div>
+  </div>
+  <div id="xhair"></div>
+  <div id="o2wrap">
+    <div class="blabel">O₂ SUPPLY</div>
+    <div class="barbg"><div id="o2fill" style="width:100%"></div></div>
+  </div>
+  <div id="lockhint">▶ 画面クリックでマウス視点</div>
+  <div id="radio"></div>
+  <div id="ctrlhint">
+    <span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> 移動 &nbsp;
+    <span class="k">Q</span><span class="k">E</span> or <span class="k">Z</span><span class="k">C</span> 上下 &nbsp; マウス 視点
+  </div>
+</div>
+
+<!-- Repair mini-game UI -->
+<div id="repair-ui">
+  <div id="repair-box">
+    <div id="repair-title">REPAIR</div>
+    <div id="repair-type">BOLT</div>
+    <div id="repair-hint"></div>
+    <div id="repair-bar-bg"><div id="repair-bar"></div></div>
+    <div id="mini-slider" style="display:none">
+      <div id="mini-track"></div>
+      <div id="mini-target"></div>
+      <div id="mini-cursor" style="left:50%"></div>
+    </div>
+    <div id="repair-cancel">ESCキーでキャンセル</div>
+  </div>
+</div>
+
+<!-- Flash / Night -->
+<div id="flash"></div>
+<div id="night"></div>
+<div id="debris-warnings"></div>
+
+<!-- Title overlay -->
+<div id="overlay">
+  <h1>ISS EVA SIMULATOR</h1>
+  <div class="osub">国際宇宙ステーション 船外活動 疑似体験</div>
+  <div class="osub">Altitude 408 km · Orbital velocity 27,635 km/h</div>
+  <div id="issbox">🛰 ISS 実時刻位置データ 取得中…</div>
+  <button id="startbtn" onclick="startEVA()">🧑‍🚀 &nbsp; EVA 開始</button>
+  <div class="okeys">
+    <span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> スラスター &nbsp;&nbsp;
+    <span class="k">Q</span><span class="k">E</span> or <span class="k">Z</span><span class="k">C</span> 上下 &nbsp; マウス 視点<br>
+    修理箇所にゆっくり近づいて <span class="k">SPACE</span> で作業
+  </div>
+</div>
+
+<!-- Game Over -->
+<div id="gameover-screen" class="endscreen">
+  <h2>GAME OVER</h2>
+  <div class="escore" id="go-info"></div>
+  <button class="endbtn" onclick="retryGame()">RETRY</button>
+</div>
+
+<!-- Mission Clear -->
+<div id="clear-screen" class="endscreen">
+  <h2>MISSION CLEAR</h2>
+  <div class="escore" id="mc-info"></div>
+  <button class="endbtn" onclick="nextStage()">NEXT STAGE →</button>
+  <button class="endbtn" onclick="retryGame()" style="font-size:11px;opacity:.5;border-width:1px;">RETRY</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ─── globals ───────────────────────────────────────
+let scene, camera, renderer, clock;
+let issGroup, playerGroup, earthMesh, tetherLine;
+let ambientLight, sunLight;
+let vel = new THREE.Vector3();
+let keys = {};
+let yaw = 0, pitch = 0;
+let isLocked = false;
+let o2 = 100;
+let cloudMesh = null;
+let cameraShakeTime = 0, cameraShakeAmt = 0;
+
+const TETHER = 42, THRUST = 0.011, DAMP = 0.984;
+
+// ─── ゲーム状態 ────────────────────────────────────
+const G = {
+  state: 'title',    // title | playing | repairing | gameover | cleared
+  stage: 1,
+  score: 0,
+  hiScore: 0,
+  combo: 0,
+  comboMul: 1,
+  repairPoints: [],
+  totalRepairs: 0,
+  completedRepairs: 0,
+  invincible: false,
+  invincTimer: 0,
+  dayTimer: 0,
+  isNight: false,
+  debris: [],
+  debrisTimer: 0,
+  radioQueue: [],
+  radioTimer: 0,
+  // Repair mini-game
+  currentRP: null,
+  actionProg: 0,      // 0-1 progress
+  miniVal: 0.5,       // slider value 0-1
+  miniTarget: 0.5,    // target value 0-1
+  miniDir: 1,
+};
+
+// ─── ISS 衝突ゾーン (ローカル座標) ──────────────────
+const ISS_ZONES = [
+  {p:[0,0,0],r:1.5},          // 中央ノード
+  {p:[0,0,3.8],r:0.80},       // Harmony
+  {p:[0,0,6.8],r:0.70},       // Tranquility
+  {p:[0,0,-3.5],r:0.75},      // Destiny
+  {p:[0,0,-6.5],r:0.68},      // Columbus
+  {p:[0,0,9.4],r:0.58},       // Kibo
+  {p:[0,0,-9.0],r:0.55},      // Pirs
+  {p:[-5,0,0],r:0.55},{p:[5,0,0],r:0.55},   // トラス
+  {p:[-8,0,0],r:0.55},{p:[8,0,0],r:0.55},
+  {p:[-11,0,0],r:0.50},{p:[11,0,0],r:0.50},
+  // ソーラーパネル本体（付け根〜先端まで5点×上下×4列 = 40球）
+  ...[-9.0,-5.2,5.2,9.0].flatMap(px=>
+    [3.18,-3.18].flatMap(py=>
+      [-1.6,-0.8,0,0.8,1.6].map(dx=>({p:[px+dx,py,0],r:0.52}))
+    )
+  ),
+  // アーム（マスト）部分
+  ...[-9.0,-5.2,5.2,9.0].flatMap(px=>
+    [1,-1].map(s=>({p:[px,s*1.5,0],r:0.30}))
+  ),
+];
+
+// ─── 修理ポイント候補 ────────────────────────────────
+const RP_LOCS = [
+  {p:[0,0.88,3.8],  type:'bolt',    col:0xffcc00, label:'BOLT TIGHTENING'},
+  {p:[0,-0.85,6.8], type:'panel',   col:0x00ccff, label:'PANEL EXCHANGE'},
+  {p:[0,0.80,-3.5], type:'antenna', col:0xcc44ff, label:'ANTENNA TUNING'},
+  {p:[-9,3.75,0],   type:'bolt',    col:0xffcc00, label:'BOLT TIGHTENING'},
+  {p:[9,3.75,0],    type:'panel',   col:0x00ccff, label:'PANEL EXCHANGE'},
+  {p:[-5.2,-3.75,0],type:'antenna', col:0xcc44ff, label:'ANTENNA TUNING'},
+  {p:[5.2,-3.75,0], type:'bolt',    col:0xffcc00, label:'BOLT TIGHTENING'},
+  {p:[0,0,-9.0],    type:'panel',   col:0x00ccff, label:'PANEL EXCHANGE'},
+];
+
+// ─── ISS API / 軌道計算 ─────────────────────────────
+function calcISSPos() {
+  const t=Date.now()/1000, period=92.7*60, incl=51.6*Math.PI/180;
+  const angle=(t%period)/period*Math.PI*2;
+  const lat=Math.asin(Math.sin(incl)*Math.sin(angle))*180/Math.PI;
+  const lngOrbit=Math.atan2(Math.cos(incl)*Math.sin(angle),Math.cos(angle))*180/Math.PI;
+  const earthRot=(t/86164.1)*360%360;
+  let lng=(lngOrbit-earthRot+360)%360; if(lng>180)lng-=360;
+  return{lat,lng,alt:408.3+Math.sin(angle*3.5+1.2)*2.8,vel:27635+Math.sin(angle*2)*35};
+}
+function updateISSHUD(d,isApprox){
+  const tag=isApprox?'⟳ 軌道計算（概算）':'🛰 リアルタイム';
+  document.getElementById('issbox').innerHTML=`${tag}<br>緯度 ${d.lat.toFixed(2)}°　経度 ${d.lng.toFixed(2)}°<br>高度 ${d.alt.toFixed(1)} km　速度 ${Math.round(d.vel).toLocaleString()} km/h`;
+  document.getElementById('h-lat').textContent=`LAT  ${d.lat.toFixed(3)}°`;
+  document.getElementById('h-lng').textContent=`LNG  ${d.lng.toFixed(3)}°`;
+  document.getElementById('h-alt').textContent=`ALT  ${d.alt.toFixed(1)} km`;
+  document.getElementById('h-vel').textContent=`VEL  ${Math.round(d.vel).toLocaleString()} km/h`;
+}
+async function fetchISS(){
+  try{
+    const ctrl=new AbortController(),tid=setTimeout(()=>ctrl.abort(),3000);
+    const r=await fetch('https://api.wheretheiss.at/v1/satellites/25544',{signal:ctrl.signal});
+    clearTimeout(tid); if(!r.ok)throw new Error();
+    const d=await r.json();
+    updateISSHUD({lat:d.latitude,lng:d.longitude,alt:d.altitude,vel:d.velocity},false);
+    return;
+  }catch{}
+  updateISSHUD(calcISSPos(),true);
+}
+fetchISS(); setInterval(fetchISS,5000);
+
+// ─── scene setup ───────────────────────────────────
+function init(){
+  scene=new THREE.Scene(); clock=new THREE.Clock();
+  camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,80000);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+
+  sunLight=new THREE.DirectionalLight(0xfff8e8,2.4); sunLight.position.set(250,90,80); scene.add(sunLight);
+  ambientLight=new THREE.AmbientLight(0x0a0e1a,0.55); scene.add(ambientLight);
+  const fill=new THREE.DirectionalLight(0x2244aa,0.22); fill.position.set(-200,-60,-100); scene.add(fill);
+
+  makeStars(); makeEarth();
+  issGroup=makeISS(); scene.add(issGroup);
+  playerGroup=makeAstronaut(); playerGroup.position.set(0,3,14); scene.add(playerGroup);
+  makeTether(); setupControls();
+
+  window.addEventListener('resize',()=>{
+    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+  loop();
+}
+
+// ─── stars ─────────────────────────────────────────
+function makeStars(){
+  const N=5500,pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){const r=22000+Math.random()*10000,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);pos[i*3]=r*Math.sin(ph)*Math.cos(th);pos[i*3+1]=r*Math.sin(ph)*Math.sin(th);pos[i*3+2]=r*Math.cos(ph);}
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:true})));
+  const N2=200,pos2=new Float32Array(N2*3);
+  for(let i=0;i<N2;i++){const r=20000+Math.random()*5000,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);pos2[i*3]=r*Math.sin(ph)*Math.cos(th);pos2[i*3+1]=r*Math.sin(ph)*Math.sin(th);pos2[i*3+2]=r*Math.cos(ph);}
+  const g2=new THREE.BufferGeometry(); g2.setAttribute('position',new THREE.BufferAttribute(pos2,3));
+  scene.add(new THREE.Points(g2,new THREE.PointsMaterial({color:0xeeeeff,size:3.5,sizeAttenuation:true})));
+}
+
+// ─── earth ─────────────────────────────────────────
+function makeEarth(){
+  const W=1024,H=512;
+  function h21(x,y){const a=Math.sin(x*127.1+y*311.7)*43758.5453;return a-Math.floor(a);}
+  function sn(x,y){const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);return h21(ix,iy)*(1-ux)*(1-uy)+h21(ix+1,iy)*ux*(1-uy)+h21(ix,iy+1)*(1-ux)*uy+h21(ix+1,iy+1)*ux*uy;}
+  function fbm(x,y,sc,oct){let v=0,a=0.5;for(let i=0;i<oct;i++){v+=a*sn(x*sc*(1<<i),y*sc*(1<<i));a*=0.5;}return v;}
+
+  const msk=document.createElement('canvas');msk.width=W;msk.height=H;
+  const mc=msk.getContext('2d');mc.fillStyle='#0018a8';mc.fillRect(0,0,W,H);mc.fillStyle='#ff3300';
+  const mp=(ln,la)=>[(ln+180)/360*W,(90-la)/180*H];
+  function mpoly(pts){mc.beginPath();pts.forEach(([ln,lt],i)=>{const[x,y]=mp(ln,lt);i?mc.lineTo(x,y):mc.moveTo(x,y);});mc.closePath();mc.fill();}
+  mpoly([[-168,71],[-130,60],[-124,49],[-118,34],[-110,24],[-93,16],[-83,10],[-78,9],[-80,24],[-75,35],[-67,44],[-57,47],[-64,63],[-78,73],[-100,73],[-130,71],[-168,71]]);
+  mpoly([[-75,11],[-62,11],[-50,4],[-35,-5],[-35,-22],[-49,-28],[-52,-34],[-64,-55],[-67,-56],[-73,-47],[-71,-30],[-70,-18],[-75,-10],[-78,2],[-75,11]]);
+  mpoly([[-10,36],[-8,38],[-8,44],[-2,48],[1,51],[5,54],[10,57],[15,57],[20,59],[28,61],[30,60],[28,56],[25,54],[20,54],[15,55],[10,55],[5,54],[2,51],[-2,48],[-8,44],[-10,36]]);
+  mpoly([[5,57],[8,58],[10,59],[15,70],[18,70],[26,71],[30,71],[28,68],[25,66],[22,60],[18,58],[15,57],[10,57],[5,57]]);
+  mpoly([[-18,16],[-15,10],[-15,5],[-8,5],[2,5],[8,5],[10,2],[10,-2],[14,-5],[17,-17],[15,-29],[18,-34],[26,-34],[33,-27],[37,-12],[40,-5],[43,2],[46,8],[51,11],[45,12],[38,16],[32,18],[24,22],[18,22],[10,15],[2,16],[-18,16]]);
+  mpoly([[26,42],[30,42],[36,36],[40,38],[44,42],[52,44],[58,48],[70,54],[80,50],[90,50],[100,50],[110,50],[120,50],[130,50],[135,48],[142,46],[138,38],[121,32],[110,20],[100,12],[103,2],[108,-6],[110,-7],[108,2],[105,10],[100,12],[80,8],[73,22],[60,22],[55,24],[50,28],[44,38],[38,36],[30,42],[26,42]]);
+  mpoly([[58,48],[70,54],[80,50],[100,55],[120,58],[140,60],[160,62],[178,65],[180,72],[160,72],[140,72],[120,70],[100,68],[80,66],[60,64],[50,62],[50,55],[58,48]]);
+  mpoly([[68,24],[72,22],[77,8],[80,5],[80,14],[75,20],[72,24],[68,24]]);
+  mpoly([[36,30],[44,30],[55,24],[58,20],[56,12],[44,12],[38,16],[36,22],[36,30]]);
+  mpoly([[114,-22],[122,-16],[130,-14],[136,-12],[140,-18],[148,-20],[152,-24],[152,-30],[148,-38],[140,-38],[132,-36],[128,-34],[120,-34],[113,-26],[114,-22]]);
+  mpoly([[-52,83],[-30,83],[-18,76],[-18,72],[-24,68],[-38,65],[-44,60],[-52,60],[-58,64],[-62,68],[-58,76],[-52,83]]);
+  const md=mc.getImageData(0,0,W,H).data;
+
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  const img=ctx.createImageData(W,H);const px=img.data;
+  for(let y=0;y<H;y++){
+    const lat=90-(y/H)*180,aLat=Math.abs(lat);
+    for(let x=0;x<W;x++){
+      const lon=(x/W)*360-180,i=(y*W+x)*4,isL=md[i]>100;
+      const n=fbm(x,y,0.055,3),nf=fbm(x,y,0.20,2);
+      let r,g,b;
+      if(isL){
+        if(aLat>72){const w=195+Math.floor(nf*55);r=w;g=w;b=Math.min(255,w+22);}
+        else if(aLat>60){r=92+Math.floor(n*30);g=100+Math.floor(n*28);b=68+Math.floor(n*18);}
+        else if(aLat<23){
+          if((lat>14&&lat<34&&lon>-18&&lon<58)||(lat>12&&lat<30&&lon>36&&lon<60)||
+             (lat>-36&&lat<-16&&lon>115&&lon<148)||(lat>24&&lat<37&&lon>-122&&lon<-98))
+           {r=185+Math.floor(n*55);g=148+Math.floor(n*38);b=80+Math.floor(n*28);}
+          else{r=22+Math.floor(n*18);g=52+Math.floor(n*22);b=14+Math.floor(n*12);}
+        }else{
+          if((lat>36&&lat<52&&lon>78&&lon<130)||(lat>-52&&lat<-36&&lon>-72&&lon<-58))
+           {r=148+Math.floor(n*40);g=128+Math.floor(n*32);b=68+Math.floor(n*22);}
+          else{r=48+Math.floor(n*30);g=68+Math.floor(n*28);b=28+Math.floor(n*16);}
+          if(lat>28&&lat<38&&lon>70&&lon<105){const hi=fbm(x,y,0.18,2);if(hi>0.56){const w=138+Math.floor(nf*52);r=w;g=w;b=w+8;}}
+        }
+      }else{
+        const tr=(aLat<30)?(1-aLat/30):0,co=sn(x*0.08,y*0.08)*0.3;
+        r=7+Math.floor(n*8);g=24+Math.floor(n*14)+Math.floor(tr*20)+Math.floor(co*8);
+        b=80+Math.floor(n*18)+Math.floor(tr*35)+Math.floor(co*12);
+      }
+      px[i]=Math.max(0,Math.min(255,r));px[i+1]=Math.max(0,Math.min(255,g));
+      px[i+2]=Math.max(0,Math.min(255,b));px[i+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  [[W/2,0],[W/2,H]].forEach(([cx,cy])=>{
+    const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,H*0.155);
+    gr.addColorStop(0,'rgba(232,244,255,1)');gr.addColorStop(0.5,'rgba(212,230,250,0.9)');gr.addColorStop(1,'rgba(192,218,245,0)');
+    ctx.fillStyle=gr;ctx.fillRect(0,cy>0?H*0.845:0,W,H*0.155);
+  });
+  earthMesh=new THREE.Mesh(new THREE.SphereGeometry(860,72,72),
+    new THREE.MeshPhongMaterial({map:new THREE.CanvasTexture(cv),specular:new THREE.Color(0.08,0.14,0.28),shininess:20}));
+  earthMesh.position.set(0,-910,0);earthMesh.rotation.x=-0.40;earthMesh.rotation.y=1.20;scene.add(earthMesh);
+
+  const cW=1024,cH=512,ccv=document.createElement('canvas');ccv.width=cW;ccv.height=cH;
+  const cc=ccv.getContext('2d'),cim=cc.createImageData(cW,cH),cp=cim.data;
+  for(let y=0;y<cH;y++){
+    const lat=90-(y/cH)*180,itcz=Math.exp(-(lat*lat)/(2*22*22))*0.28,mid=Math.exp(-((Math.abs(lat)-50)*(Math.abs(lat)-50))/(2*14*14))*0.20;
+    for(let x=0;x<cW;x++){
+      const ci=(y*cW+x)*4,c1=fbm(x,y,0.010,4),c2=fbm(x*1.4+300,y*1.4+200,0.018,3);
+      const tot=c1*0.6+c2*0.4+itcz+mid,thr=0.52;
+      if(tot>thr){const a=Math.min(255,Math.floor((tot-thr)*500));cp[ci]=cp[ci+1]=cp[ci+2]=255;cp[ci+3]=a;}
+      else{cp[ci]=cp[ci+1]=cp[ci+2]=cp[ci+3]=0;}
+    }
+  }
+  cc.putImageData(cim,0,0);
+  const cloudTex=new THREE.CanvasTexture(ccv);
+  cloudMesh=new THREE.Mesh(new THREE.SphereGeometry(863,48,48),
+    new THREE.MeshPhongMaterial({map:cloudTex,transparent:true,opacity:0.90,depthWrite:false,alphaMap:cloudTex}));
+  cloudMesh.position.copy(earthMesh.position);cloudMesh.rotation.x=earthMesh.rotation.x;cloudMesh.rotation.y=earthMesh.rotation.y;scene.add(cloudMesh);
+  [{r:875,c:0x55bbff,o:0.115},{r:885,c:0x3399ff,o:0.070},{r:897,c:0x1a77ee,o:0.038},{r:912,c:0x0055cc,o:0.018}].forEach(({r,c,o})=>{
+    const m=new THREE.Mesh(new THREE.SphereGeometry(r,32,32),new THREE.MeshPhongMaterial({color:c,transparent:true,opacity:o,side:THREE.FrontSide,depthWrite:false}));
+    m.position.copy(earthMesh.position);scene.add(m);
+  });
+  const rim=new THREE.Mesh(new THREE.SphereGeometry(878,32,32),new THREE.MeshPhongMaterial({color:0x88ccff,transparent:true,opacity:0.055,side:THREE.BackSide,depthWrite:false}));
+  rim.position.copy(earthMesh.position);scene.add(rim);
+}
+
+// ─── ISS ───────────────────────────────────────────
+function makeISS(){
+  const grp=new THREE.Group();
+  const mt=new THREE.MeshPhongMaterial({color:0xd5d5c8,specular:0x666655,shininess:55});
+  const mw=new THREE.MeshPhongMaterial({color:0xecece4,specular:0x444433,shininess:18});
+  const ms=new THREE.MeshPhongMaterial({color:0x192b55,specular:0x2244bb,shininess:95,side:THREE.DoubleSide});
+  const mg=new THREE.MeshPhongMaterial({color:0xa87808,specular:0xddbb00,shininess:60});
+  const mr=new THREE.MeshPhongMaterial({color:0xc5c5a8,specular:0x888877,shininess:25,side:THREE.DoubleSide});
+  function add(geo,mat,x=0,y=0,z=0,rx=0,ry=0,rz=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);grp.add(m);}
+  add(new THREE.BoxGeometry(23,0.30,0.30),mt);
+  for(let x=-10.5;x<=10.5;x+=2.1)add(new THREE.BoxGeometry(0.08,0.64,0.64),mt,x);
+  for(let x=-9.5;x<10;x+=2.1)add(new THREE.BoxGeometry(2.0,0.05,0.05),mt,x+1.05,0,0,0,0,Math.PI/4);
+  [-9.0,-5.2,5.2,9.0].forEach(px=>{
+    [1,-1].forEach(s=>{
+      add(new THREE.BoxGeometry(0.10,2.75,0.08),mt,px,s*1.48,0);
+      add(new THREE.BoxGeometry(3.75,0.04,1.30),ms,px,s*3.18,0);
+      for(let i=-1.65;i<=1.65;i+=0.44)add(new THREE.BoxGeometry(0.024,0.06,1.30),mt,px+i,s*3.18,0);
+      for(let j=-0.52;j<=0.52;j+=0.52)add(new THREE.BoxGeometry(3.75,0.06,0.024),mt,px,s*3.18,j);
+    });
+  });
+  [[0,0.63,4.7],[3.8,0.57,3.4],[6.8,0.51,2.8],[-3.5,0.56,3.2],[-6.5,0.50,2.7],[9.4,0.44,2.1],[-9.0,0.41,2.0]].forEach(([z,r,l])=>{
+    add(new THREE.CylinderGeometry(r,r,l,12),mw,0,0,z,Math.PI/2);
+    if(Math.abs(z)>5)add(new THREE.BoxGeometry(0.50,r*2,0.06),mg,0,0,z+l*0.28);
+  });
+  grp.add(new THREE.Mesh(new THREE.SphereGeometry(0.70,12,12),mw));
+  [-7.0,7.0].forEach(px=>{add(new THREE.BoxGeometry(2.4,0.04,0.88),mr,px,0,-1.28);add(new THREE.BoxGeometry(2.4,0.04,0.88),mr,px,0,1.28);});
+  const cup=new THREE.Mesh(new THREE.SphereGeometry(0.38,10,10,0,Math.PI*2,0,Math.PI/2),new THREE.MeshPhongMaterial({color:0x7799bb,transparent:true,opacity:0.78,specular:0xaaddee,shininess:160}));
+  cup.rotation.x=Math.PI;cup.position.set(0,-0.68,-3.2);grp.add(cup);
+  add(new THREE.CylinderGeometry(0.40,0.40,0.28,10),mw,0,-0.43,-3.2);
+  add(new THREE.BoxGeometry(0.09,0.09,3.7),mt,1.9,0.55,1.9,0.28);
+  add(new THREE.BoxGeometry(0.09,0.09,2.6),mt,1.9,0.55,4.2,-0.22);
+  add(new THREE.SphereGeometry(0.10,6,6),mt,1.9,0.55,3.35);
+  return grp;
+}
+
+// ─── astronaut ─────────────────────────────────────
+function makeAstronaut(){
+  const grp=new THREE.Group();
+  const sw=new THREE.MeshPhongMaterial({color:0xefefe5,specular:0x444444,shininess:18});
+  const vi=new THREE.MeshPhongMaterial({color:0xc88400,transparent:true,opacity:0.88,specular:0xffcc44,shininess:180});
+  const dk=new THREE.MeshPhongMaterial({color:0x1c1c1c});
+  const rd=new THREE.MeshPhongMaterial({color:0xcc2222});
+  function add(geo,mat,x=0,y=0,z=0,rx=0,ry=0,rz=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);grp.add(m);}
+  add(new THREE.SphereGeometry(0.36,14,14),sw,0,1.04,0);
+  add(new THREE.BoxGeometry(0.46,0.27,0.07),vi,0,1.04,0.31);
+  add(new THREE.CylinderGeometry(0.37,0.37,0.06,14),dk,0,0.78,0);
+  add(new THREE.BoxGeometry(0.58,0.72,0.39),sw,0,0.28,0);
+  add(new THREE.BoxGeometry(0.47,0.55,0.21),dk,0,0.30,-0.28);
+  add(new THREE.BoxGeometry(0.17,0.08,0.05),rd,-0.31,0.51,0.13,0,-0.52);
+  [-1,1].forEach(s=>{
+    add(new THREE.CylinderGeometry(0.13,0.11,0.55,8),sw,s*0.41,0.23,0,0,0,s*0.30);
+    add(new THREE.SphereGeometry(0.11,8,8),dk,s*0.53,-0.01,0);
+  });
+  [-1,1].forEach(s=>{
+    add(new THREE.CylinderGeometry(0.13,0.11,0.58,8),sw,s*0.15,-0.30,0);
+    add(new THREE.BoxGeometry(0.18,0.13,0.27),dk,s*0.15,-0.62,0.04);
+  });
+  return grp;
+}
+
+// ─── tether ────────────────────────────────────────
+function makeTether(){
+  tetherLine=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.018,0.018,1,5),
+    new THREE.MeshBasicMaterial({color:0xcccccc,opacity:0.55,transparent:true})
+  );
+  scene.add(tetherLine);
+}
+
+// ─── controls ──────────────────────────────────────
+function setupControls(){
+  const GKEYS=new Set(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','KeyZ','KeyC','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+  document.addEventListener('keydown',e=>{
+    keys[e.code]=true;
+    if(GKEYS.has(e.code))e.preventDefault();
+    if(e.code==='Escape'&&G.state==='repairing')cancelRepair();
+  });
+  document.addEventListener('keyup',e=>{keys[e.code]=false;});
+  document.addEventListener('pointerlockchange',()=>{
+    isLocked=document.pointerLockElement===renderer.domElement;
+    document.getElementById('lockhint').classList.toggle('on',!isLocked&&G.state==='playing');
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!isLocked)return;
+    yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;
+    pitch=Math.max(-1.28,Math.min(1.28,pitch));
+  });
+  renderer.domElement.addEventListener('click',()=>{
+    if(G.state==='playing'&&!isLocked)renderer.domElement.requestPointerLock();
+  });
+}
+
+// ─── 衝突判定 ───────────────────────────────────────
+function getISSWorldPos(lx,ly,lz){
+  return new THREE.Vector3(lx,ly,lz).applyEuler(new THREE.Euler(0,issGroup.rotation.y,0));
+}
+
+function checkISSCollision(){
+  if(G.invincible||G.state!=='playing')return;
+  const pp=playerGroup.position,pr=0.5;
+  for(const z of ISS_ZONES){
+    const wp=getISSWorldPos(...z.p);
+    if(pp.distanceTo(wp)<z.r+pr){
+      const spd=vel.length();
+      const dmg=Math.max(5,Math.min(35,spd*200));
+      // 跳ね返り
+      const bounce=pp.clone().sub(wp).normalize();
+      vel.copy(bounce.multiplyScalar(Math.max(0.05,spd*0.45)));
+      playerGroup.position.copy(wp.clone().add(bounce.multiplyScalar(z.r+pr+0.15)));
+      applyDamage(dmg);
+      return;
+    }
+  }
+}
+
+function applyDamage(dmg){
+  o2=Math.max(0,o2-dmg);
+  G.combo=0;G.comboMul=1;
+  G.invincible=true;G.invincTimer=1.0;
+  triggerFlash('#ff220088');
+  cameraShakeAmt=0.25;cameraShakeTime=0.35;
+  const msgs=['大丈夫か？応答せよ','衝突を確認！気をつけろ','スーツへのダメージ！'];
+  showRadio(msgs[Math.floor(Math.random()*msgs.length)]);
+  updateScoreHUD();
+  if(o2<=0)triggerGameOver('O₂不足');
+}
+
+function triggerFlash(col){
+  const f=document.getElementById('flash');
+  f.style.background=col;f.style.opacity='1';
+  setTimeout(()=>{f.style.transition='opacity .25s';f.style.opacity='0';},80);
+}
+
+// ─── ミッション・修理 ────────────────────────────────
+function initMission(){
+  // 前のポイントを削除
+  G.repairPoints.forEach(rp=>scene.remove(rp.mesh));
+  G.repairPoints=[];G.completedRepairs=0;
+  // ステージに応じた数（1〜5）
+  const count=Math.min(5,1+Math.floor(Math.random()*(G.stage+1)));
+  G.totalRepairs=count;
+  const locs=[...RP_LOCS].sort(()=>Math.random()-0.5).slice(0,count);
+  locs.forEach(loc=>{
+    const geo=new THREE.BoxGeometry(0.85,0.85,0.85);
+    const mat=new THREE.MeshBasicMaterial({color:loc.col,wireframe:true,transparent:true,opacity:0.85});
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.set(...loc.p); scene.add(mesh);
+    G.repairPoints.push({...loc,mesh,completed:false,pulse:0});
+  });
+  updateMissionHUD();
+}
+
+function updateRepairMeshes(dt){
+  G.repairPoints.forEach(rp=>{
+    if(rp.completed)return;
+    rp.pulse=(rp.pulse||0)+dt*3;
+    rp.mesh.material.opacity=0.5+0.4*Math.sin(rp.pulse);
+    rp.mesh.rotation.y+=dt*1.2;
+    rp.mesh.rotation.x+=dt*0.8;
+    // ISS回転に追従
+    const wp=getISSWorldPos(...rp.p);
+    rp.mesh.position.copy(wp);
+  });
+}
+
+function checkRepairContact(){
+  if(G.state!=='playing')return;
+  const spd=vel.length();
+  for(const rp of G.repairPoints){
+    if(rp.completed)continue;
+    const wp=getISSWorldPos(...rp.p);
+    const dist=playerGroup.position.distanceTo(wp);
+    if(dist<1.8){
+      if(spd<0.07){
+        startRepairAction(rp);
+      }else if(spd>0.13&&!G.invincible){
+        applyDamage(8);
+        showRadio('速度を落として！修理箇所に注意');
+      }
+      return;
+    }
+  }
+}
+
+function startRepairAction(rp){
+  G.state='repairing';G.currentRP=rp;G.actionProg=0;
+  G.miniVal=Math.random()*0.6+0.2;
+  G.miniTarget=0.45+Math.random()*0.10;
+  // 修理UI表示
+  const typeMap={bolt:{hint:'[SPACE] を押し続けてボルトを締める',bar:true,mini:false},
+    panel:{hint:'[A]/[D] でパネルを中央に合わせる',bar:false,mini:true},
+    antenna:{hint:'[W]/[S] で受信バーを最大に合わせる',bar:false,mini:true}};
+  const t=typeMap[rp.type];
+  document.getElementById('repair-title').textContent='⚙ REPAIR';
+  document.getElementById('repair-type').textContent=rp.label;
+  document.getElementById('repair-hint').textContent=t.hint;
+  document.getElementById('repair-bar').style.width='0%';
+  document.getElementById('repair-bar-bg').style.display=t.bar?'block':'none';
+  document.getElementById('mini-slider').style.display=t.mini?'block':'none';
+  if(t.mini){
+    document.getElementById('mini-target').style.left=`${G.miniTarget*100-2.5}%`;
+    document.getElementById('mini-cursor').style.left=`${G.miniVal*100}%`;
+  }
+  document.getElementById('repair-ui').classList.add('on');
+  showRadio('修理箇所に接触。作業開始！');
+}
+
+function updateRepairAction(dt){
+  if(G.state!=='repairing')return;
+  const rp=G.currentRP;
+  if(!rp){return;}
+
+  if(rp.type==='bolt'){
+    if(keys['Space']){G.actionProg=Math.min(1,G.actionProg+dt*0.45);}
+    else{G.actionProg=Math.max(0,G.actionProg-dt*0.25);}
+    document.getElementById('repair-bar').style.width=`${G.actionProg*100}%`;
+    if(G.actionProg>=1)completeRepair(rp);
+  }else if(rp.type==='panel'){
+    if(keys['KeyA']||keys['ArrowLeft'])G.miniVal=Math.max(0,G.miniVal-dt*0.6);
+    if(keys['KeyD']||keys['ArrowRight'])G.miniVal=Math.min(1,G.miniVal+dt*0.6);
+    document.getElementById('mini-cursor').style.left=`${G.miniVal*100}%`;
+    if(Math.abs(G.miniVal-G.miniTarget)<0.07){
+      G.actionProg=Math.min(1,G.actionProg+dt*0.8);
+      document.getElementById('repair-bar-bg').style.display='block';
+      document.getElementById('repair-bar').style.width=`${G.actionProg*100}%`;
+      if(G.actionProg>=1)completeRepair(rp);
+    }else{G.actionProg=Math.max(0,G.actionProg-dt*0.5);}
+  }else if(rp.type==='antenna'){
+    if(keys['KeyW']||keys['ArrowUp'])G.miniVal=Math.max(0,G.miniVal-dt*0.5);
+    if(keys['KeyS']||keys['ArrowDown'])G.miniVal=Math.min(1,G.miniVal+dt*0.5);
+    document.getElementById('mini-cursor').style.left=`${G.miniVal*100}%`;
+    if(Math.abs(G.miniVal-G.miniTarget)<0.07){
+      G.actionProg=Math.min(1,G.actionProg+dt*0.8);
+      document.getElementById('repair-bar-bg').style.display='block';
+      document.getElementById('repair-bar').style.width=`${G.actionProg*100}%`;
+      if(G.actionProg>=1)completeRepair(rp);
+    }else{G.actionProg=Math.max(0,G.actionProg-dt*0.4);}
+  }
+  // O2は修理中も減り続ける
+  o2=Math.max(0,o2-dt*0.04);
+  updateO2HUD();
+  if(o2<=0){cancelRepair();triggerGameOver('O₂不足');}
+}
+
+function completeRepair(rp){
+  rp.completed=true;
+  scene.remove(rp.mesh);
+  G.completedRepairs++;
+  G.state='playing';
+  document.getElementById('repair-ui').classList.remove('on');
+  // スコア加算
+  addScore(100);
+  o2=Math.min(100,o2+8); // 少し回復
+  updateO2HUD();
+  const msgs=['ナイスタッチ！','修理完了！','良い仕事だ！'];
+  showRadio(msgs[Math.floor(Math.random()*msgs.length)]);
+  triggerFlash('#00ff8844');
+  updateMissionHUD();
+  if(G.completedRepairs>=G.totalRepairs)showMissionClear();
+}
+
+function cancelRepair(){
+  G.state='playing';G.currentRP=null;G.actionProg=0;
+  document.getElementById('repair-ui').classList.remove('on');
+}
+
+function updateMissionHUD(){
+  document.getElementById('h-stage').textContent=`STAGE  ${G.stage}`;
+  document.getElementById('h-repairs').textContent=`REPAIRS  ${G.completedRepairs}/${G.totalRepairs}`;
+}
+
+// ─── デブリ ─────────────────────────────────────────
+function spawnDebris(){
+  const angle=Math.random()*Math.PI*2;
+  const startPos=new THREE.Vector3(Math.cos(angle)*45,(Math.random()-0.5)*18,Math.sin(angle)*45);
+  const target=playerGroup.position.clone().add(new THREE.Vector3((Math.random()-0.5)*6,(Math.random()-0.5)*4,(Math.random()-0.5)*6));
+  const dv=target.clone().sub(startPos).normalize().multiplyScalar(0.28+Math.random()*0.4+G.stage*0.04);
+  const mesh=new THREE.Mesh(
+    new THREE.BoxGeometry(0.28+Math.random()*0.3,0.14,0.38+Math.random()*0.2),
+    new THREE.MeshPhongMaterial({color:0x888888,specular:0x444444})
+  );
+  mesh.position.copy(startPos);
+  mesh.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
+  scene.add(mesh);
+  G.debris.push({mesh,vel:dv,life:0,maxLife:20});
+  showDebrisWarning(startPos);
+}
+
+function showDebrisWarning(pos){
+  const el=document.createElement('div');
+  el.className='dwarn';
+  // 画面端の位置を簡易計算
+  const side=Math.random()<0.5;
+  el.style.cssText=`left:${side?10:innerWidth-30}px;top:${20+Math.random()*(innerHeight-40)}px;`;
+  document.getElementById('debris-warnings').appendChild(el);
+  setTimeout(()=>el.remove(),2500);
+}
+
+function updateDebris(dt){
+  G.debrisTimer-=dt;
+  const spawnInterval=Math.max(6,14-G.stage*1.5);
+  if(G.debrisTimer<=0){G.debrisTimer=spawnInterval+Math.random()*4;if(G.state==='playing')spawnDebris();}
+
+  for(let i=G.debris.length-1;i>=0;i--){
+    const d=G.debris[i];
+    d.mesh.position.addScaledVector(d.vel,dt*60);
+    d.mesh.rotation.x+=dt*1.5;d.mesh.rotation.y+=dt*2;
+    d.life+=dt;
+    // 衝突チェック
+    if(!G.invincible&&G.state==='playing'){
+      const dist=d.mesh.position.distanceTo(playerGroup.position);
+      if(dist<0.8){applyDamage(15);d.life=d.maxLife;}
+    }
+    if(d.life>d.maxLife){scene.remove(d.mesh);G.debris.splice(i,1);}
+  }
+}
+
+// ─── 昼夜 ───────────────────────────────────────────
+function updateDayNight(dt){
+  if(G.state!=='playing'&&G.state!=='repairing')return;
+  G.dayTimer+=dt;
+  const cycle=90,phase=(G.dayTimer%cycle)/cycle;
+  const wasNight=G.isNight;
+  G.isNight=phase>0.5;
+  if(G.isNight!==wasNight){
+    if(G.isNight){showRadio('日没だ。ライトを点けて');}
+    else{showRadio('日の出。視界良好');}
+  }
+  const nightF=G.isNight?Math.min(1,(phase-0.5)*2):0;
+  const smoothN=nightF*nightF*(3-2*nightF);
+  ambientLight.intensity=0.55-smoothN*0.45;
+  sunLight.intensity=2.4-smoothN*1.8;
+  document.getElementById('night').style.opacity=smoothN*0.62;
+}
+
+// ─── 無線 / スコア ──────────────────────────────────
+function showRadio(msg){G.radioQueue.push(msg);}
+function updateRadio(dt){
+  if(G.radioTimer>0){
+    G.radioTimer-=dt;
+    if(G.radioTimer<=0)document.getElementById('radio').style.opacity='0';
+  }
+  if(G.radioQueue.length>0&&G.radioTimer<=0){
+    const msg=G.radioQueue.shift();
+    const el=document.getElementById('radio');
+    el.textContent=`📡 ${msg}`;el.style.opacity='1';G.radioTimer=3;
+  }
+}
+
+function addScore(base){
+  const spd=vel.length();
+  const precBonus=Math.max(1,1+(0.07-Math.min(0.07,spd))/0.07);
+  const pts=Math.floor(base*G.stage*G.comboMul*precBonus);
+  G.score+=pts;G.combo++;G.comboMul=Math.min(5,1+G.combo*0.5);
+  if(G.score>G.hiScore)G.hiScore=G.score;
+  updateScoreHUD();
+  showFloatingScore(pts);
+}
+
+function updateScoreHUD(){
+  document.getElementById('h-score').textContent=G.score.toLocaleString();
+  document.getElementById('h-combo').textContent=G.combo>1?`x${G.comboMul.toFixed(1)} COMBO`:'';
+  document.getElementById('h-hi').textContent=`HI ${G.hiScore.toLocaleString()}`;
+}
+
+function showFloatingScore(pts){
+  const el=document.createElement('div');el.className='fscore';
+  el.textContent=`+${pts}`;
+  el.style.cssText=`left:${innerWidth/2-20+Math.random()*40}px;top:${innerHeight/2-60}px;`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1500);
+}
+
+// ─── O2 HUD ─────────────────────────────────────────
+function updateO2HUD(){
+  const oc=o2>20?'#00e8cc':o2>10?'#ffaa00':'#ff2200';
+  document.getElementById('o2fill').style.cssText=`width:${o2}%;background:${oc}`;
+  document.getElementById('o2v').textContent=Math.round(o2);
+  if(o2<20&&G.state==='playing'){
+    const msgs=['酸素残量に注意！','O₂が危険域。急いで！'];
+    if(!G._o2Warned){G._o2Warned=true;showRadio(msgs[Math.floor(Math.random()*msgs.length)]);}
+  }else{G._o2Warned=false;}
+}
+
+// ─── ゲームフロー ────────────────────────────────────
+function triggerGameOver(reason){
+  G.state='gameover';
+  document.exitPointerLock();
+  document.getElementById('go-info').innerHTML=
+    `原因: ${reason}<br>STAGE ${G.stage} &nbsp;|&nbsp; SCORE ${G.score.toLocaleString()}<br>HI-SCORE ${G.hiScore.toLocaleString()}`;
+  const gs=document.getElementById('gameover-screen');
+  gs.style.display='flex';
+}
+
+function showMissionClear(){
+  G.state='cleared';
+  document.exitPointerLock();
+  showRadio('良くやった、次の作業へ移れ');
+  triggerFlash('#00ff8866');
+  const bonus=G.stage*200;G.score+=bonus;if(G.score>G.hiScore)G.hiScore=G.score;
+  document.getElementById('mc-info').innerHTML=
+    `STAGE ${G.stage} クリア！<br>SCORE ${G.score.toLocaleString()} (+${bonus} ステージボーナス)<br>HI-SCORE ${G.hiScore.toLocaleString()}`;
+  const cs=document.getElementById('clear-screen');
+  cs.style.display='flex';
+}
+
+function retryGame(){
+  document.getElementById('gameover-screen').style.display='none';
+  document.getElementById('clear-screen').style.display='none';
+  o2=100;vel.set(0,0,0);
+  playerGroup.position.set(0,3,14);
+  G.state='playing';G.combo=0;G.comboMul=1;G.score=0;
+  G.invincible=false;G.dayTimer=0;G.isNight=false;
+  G.debris.forEach(d=>scene.remove(d.mesh));G.debris=[];G.debrisTimer=0;
+  ambientLight.intensity=0.55;sunLight.intensity=2.4;
+  document.getElementById('night').style.opacity='0';
+  updateScoreHUD();updateO2HUD();
+  initMission();
+  setTimeout(()=>renderer.domElement.requestPointerLock(),200);
+}
+
+function nextStage(){
+  G.stage++;
+  document.getElementById('clear-screen').style.display='none';
+  o2=Math.min(100,o2+20);vel.set(0,0,0);
+  playerGroup.position.set(0,3,14);
+  G.state='playing';G.combo=0;G.comboMul=1;
+  G.invincible=false;G.dayTimer=0;G.isNight=false;
+  G.debris.forEach(d=>scene.remove(d.mesh));G.debris=[];G.debrisTimer=0;
+  ambientLight.intensity=0.55;sunLight.intensity=2.4;
+  document.getElementById('night').style.opacity='0';
+  updateScoreHUD();updateO2HUD();
+  initMission();
+  setTimeout(()=>renderer.domElement.requestPointerLock(),200);
+}
+
+// ─── start ─────────────────────────────────────────
+function startEVA(){
+  const ov=document.getElementById('overlay');
+  ov.style.opacity='0';ov.style.pointerEvents='none';
+  setTimeout(()=>ov.style.display='none',700);
+  ['xhair','o2wrap','ctrlhint','lockhint'].forEach(id=>document.getElementById(id).classList.add('on'));
+  document.getElementById('score-hud').classList.add('on');
+  document.getElementById('p-mission').style.display='block';
+  G.state='playing';
+  G.debrisTimer=10;
+  initMission();
+  setTimeout(()=>renderer.domElement.requestPointerLock(),800);
+  showRadio('EVA開始。慎重に作業せよ');
+}
+
+// ─── update ────────────────────────────────────────
+function update(dt){
+  // ── テザー色（距離に応じて）──
+  const tetherDist=playerGroup.position.length();
+  const tr=tetherDist/TETHER;
+  const tc=tr<0.7?0xcccccc:tr<0.9?0xffcc00:0xff3300;
+  tetherLine.material.color.setHex(tc);
+
+  if(G.state==='playing'){
+    const fwd=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+    const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
+    if(keys['KeyW']||keys['ArrowUp'])vel.addScaledVector(fwd,THRUST);
+    if(keys['KeyS']||keys['ArrowDown'])vel.addScaledVector(fwd,-THRUST);
+    if(keys['KeyA']||keys['ArrowLeft'])vel.addScaledVector(right,-THRUST);
+    if(keys['KeyD']||keys['ArrowRight'])vel.addScaledVector(right,THRUST);
+    if(keys['KeyZ']||keys['KeyQ'])vel.y+=THRUST;
+    if(keys['KeyC']||keys['KeyE'])vel.y-=THRUST;
+    vel.multiplyScalar(DAMP);
+    playerGroup.position.addScaledVector(vel,dt*60);
+
+    if(tetherDist>TETHER){playerGroup.position.normalize().multiplyScalar(TETHER);vel.multiplyScalar(0.12);showRadio('命綱の限界！引き戻す');}
+    if(tetherDist<2.4){playerGroup.position.normalize().multiplyScalar(2.4);vel.multiplyScalar(0.1);}
+    if(playerGroup.position.y<-34){playerGroup.position.y=-34;vel.y=Math.abs(vel.y)*0.3;}
+    playerGroup.rotation.y=yaw+Math.PI;
+
+    // O2消費
+    const o2DrainRate=0.055+G.stage*0.005;
+    o2=Math.max(0,o2-dt*o2DrainRate);
+    updateO2HUD();
+    if(o2<=0)triggerGameOver('酸素切れ');
+
+    // 衝突・修理
+    checkISSCollision();
+    checkRepairContact();
+
+    // 無敵タイマー
+    if(G.invincible){G.invincTimer-=dt;if(G.invincTimer<=0)G.invincible=false;}
+
+    // HUD
+    const spd=Math.min(99.9,vel.length()*120);
+    document.getElementById('h-dist').textContent=`DIST  ${(tetherDist*5).toFixed(0)} m`;
+    document.getElementById('h-rcs').textContent=`RCS   ${spd.toFixed(1)}%`;
+
+  }else if(G.state==='repairing'){
+    vel.set(0,0,0); // 修理中は移動しない
+    updateRepairAction(dt);
+  }
+
+  // 修理ポイントのパルスアニメ
+  if(G.state==='playing'||G.state==='repairing')updateRepairMeshes(dt);
+
+  // テザー
+  const _to=playerGroup.position.clone();
+  const _dir=_to.clone();const _len=_dir.length();
+  if(_len>0.01){
+    tetherLine.position.copy(new THREE.Vector3().lerp(_to,0.5));
+    tetherLine.scale.set(1,_len,1);
+    tetherLine.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),_dir.normalize());
+  }
+
+  // デブリ・昼夜・無線
+  updateDebris(dt);
+  updateDayNight(dt);
+  updateRadio(dt);
+
+  // 常時: 地球・ISS回転
+  issGroup.rotation.y+=dt*0.0008;
+  earthMesh.rotation.y+=dt*0.05;
+  if(cloudMesh){cloudMesh.rotation.x=earthMesh.rotation.x;cloudMesh.rotation.y+=dt*0.062;}
+
+  // カメラシェイク
+  if(cameraShakeTime>0)cameraShakeTime-=dt;
+
+  // ── カメラ ──────────────────────────────────────
+  if(G.state==='playing'||G.state==='repairing'){
+    const d=4.4;
+    const off=new THREE.Vector3(-Math.sin(yaw)*d,1.5+Math.sin(pitch)*d*0.35,Math.cos(yaw)*d);
+    const target=playerGroup.position.clone().add(off);
+    if(cameraShakeTime>0){
+      const sh=cameraShakeAmt*(cameraShakeTime/0.35);
+      target.x+=(Math.random()-0.5)*sh;target.y+=(Math.random()-0.5)*sh;
+    }
+    camera.position.lerp(target,0.11);
+    camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(Math.sin(yaw)*7,Math.sin(pitch)*7,-Math.cos(yaw)*7)));
+  }else{
+    const t=Date.now()*0.00016,h=5+Math.sin(t*0.4)*2;
+    camera.position.set(Math.sin(t)*24,h,Math.cos(t)*24);
+    camera.lookAt(0,0,0);
+  }
+}
+
+// ─── loop ──────────────────────────────────────────
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),0.05);
+  update(dt);
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>
