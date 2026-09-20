@@ -403,9 +403,11 @@ function init(){
   ambientLight=new THREE.AmbientLight(0x0a0e1a,0.55); scene.add(ambientLight);
   const fill=new THREE.DirectionalLight(0x2244aa,0.22); fill.position.set(-200,-60,-100); scene.add(fill);
 
-  makeStars(); makeEarth();
+  makeStars(); makeSun(); makeEarth();
   issGroup=makeISS(); scene.add(issGroup);
-  playerGroup=makeAstronaut(); playerGroup.position.set(0,3,14); scene.add(playerGroup);
+  playerGroup=makeAstronaut();
+  playerGroup.scale.setScalar(0.60); // サイズ調整
+  playerGroup.position.set(0,3,14); scene.add(playerGroup);
   makeTether();
   // ヘッドライト（夜間自動点灯）
   headLight=new THREE.PointLight(0xffeedd,0,40,1.5);
@@ -430,6 +432,66 @@ function makeStars(){
   for(let i=0;i<N2;i++){const r=20000+Math.random()*5000,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);pos2[i*3]=r*Math.sin(ph)*Math.cos(th);pos2[i*3+1]=r*Math.sin(ph)*Math.sin(th);pos2[i*3+2]=r*Math.cos(ph);}
   const g2=new THREE.BufferGeometry(); g2.setAttribute('position',new THREE.BufferAttribute(pos2,3));
   scene.add(new THREE.Points(g2,new THREE.PointsMaterial({color:0xeeeeff,size:3.5,sizeAttenuation:true})));
+}
+
+
+// ─── 太陽（スターバースト光芒）────────────────────────
+function makeSun(){
+  const dir=new THREE.Vector3(250,90,80).normalize();
+  const sunPos=dir.clone().multiplyScalar(18000);
+
+  // ── キャンバスで光芒テクスチャを生成 ──
+  const S=512, cv=document.createElement('canvas');
+  cv.width=S; cv.height=S;
+  const c=cv.getContext('2d');
+  const cx=S/2, cy=S/2;
+  c.clearRect(0,0,S,S);
+
+  // 6本の光芒（2本強・4本弱）
+  [[0,1.0],[30,0.45],[60,0.45],[90,1.0],[120,0.45],[150,0.45]].forEach(([deg,str])=>{
+    const rad=deg*Math.PI/180;
+    c.save(); c.translate(cx,cy); c.rotate(rad);
+    const len=S*0.48*str;
+    const w=S*0.009;
+    [-1,1].forEach(d=>{
+      const g=c.createLinearGradient(0,0,d*len,0);
+      g.addColorStop(0,'rgba(255,255,255,0.95)');
+      g.addColorStop(0.35,'rgba(255,255,255,0.45)');
+      g.addColorStop(1,'rgba(255,255,255,0)');
+      c.fillStyle=g;
+      c.fillRect(0,-w,d*len,w*2);
+    });
+    c.restore();
+  });
+
+  // 中心コアグロー（白〜淡黄）
+  const rg=c.createRadialGradient(cx,cy,0,cx,cy,S*0.46);
+  rg.addColorStop(0,'rgba(255,255,255,1)');
+  rg.addColorStop(0.04,'rgba(255,255,230,0.96)');
+  rg.addColorStop(0.12,'rgba(255,240,160,0.72)');
+  rg.addColorStop(0.26,'rgba(255,210,80,0.35)');
+  rg.addColorStop(0.50,'rgba(255,180,30,0.12)');
+  rg.addColorStop(1,'rgba(255,150,0,0)');
+  c.fillStyle=rg; c.fillRect(0,0,S,S);
+
+  // スプライト（常にカメラを向く・加算合成）
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({
+    map:new THREE.CanvasTexture(cv),
+    blending:THREE.AdditiveBlending,
+    transparent:true,
+    depthWrite:false,
+  }));
+  sp.position.copy(sunPos);
+  sp.scale.set(3200,3200,1);
+  scene.add(sp);
+
+  // ソリッドコア（白い球）
+  const core=new THREE.Mesh(
+    new THREE.SphereGeometry(160,16,16),
+    new THREE.MeshBasicMaterial({color:0xffffff})
+  );
+  core.position.copy(sunPos);
+  scene.add(core);
 }
 
 // ─── earth ─────────────────────────────────────────
@@ -534,14 +596,21 @@ function makeISS(){
 // ─── astronaut ─────────────────────────────────────
 function makeAstronaut(){
   const grp=new THREE.Group();
-  const sw =new THREE.MeshPhongMaterial({color:0xf0ede0,specular:0x777766,shininess:38});
-  const rng=new THREE.MeshPhongMaterial({color:0xd5d0bb,specular:0x999988,shininess:55});
-  const vi =new THREE.MeshPhongMaterial({color:0xcc8800,transparent:true,opacity:0.88,specular:0xffcc44,shininess:220});
-  const dk =new THREE.MeshPhongMaterial({color:0x1a1a1a,specular:0x333333,shininess:60});
-  const pnl=new THREE.MeshPhongMaterial({color:0x1e2233,specular:0x4455bb,shininess:90});
-  const rd =new THREE.MeshPhongMaterial({color:0xcc2222});
-  const bl =new THREE.MeshPhongMaterial({color:0x2244cc});
-  const sole=new THREE.MeshPhongMaterial({color:0x111111,specular:0x222222,shininess:30});
+
+  // PBRマテリアル（MeshStandardMaterial）でリアルな質感
+  const sw =new THREE.MeshStandardMaterial({color:0xf2efe4,roughness:0.68,metalness:0.0});
+  const rng=new THREE.MeshStandardMaterial({color:0xccc7b2,roughness:0.35,metalness:0.22});
+  const vi =new THREE.MeshStandardMaterial({
+    color:0xcc8800,roughness:0.04,metalness:0.28,
+    transparent:true,opacity:0.86,
+    emissive:0x331a00,emissiveIntensity:0.35
+  });
+  const dk =new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:0.55,metalness:0.30});
+  const pnl=new THREE.MeshStandardMaterial({color:0x1a1e2e,roughness:0.40,metalness:0.55});
+  const rd =new THREE.MeshStandardMaterial({color:0xcc2222,roughness:0.60,metalness:0.0});
+  const bl =new THREE.MeshStandardMaterial({color:0x2244cc,roughness:0.55,metalness:0.0});
+  const grn=new THREE.MeshStandardMaterial({color:0x33aa33,roughness:0.55,metalness:0.0,emissive:0x114411,emissiveIntensity:0.4});
+  const sole=new THREE.MeshStandardMaterial({color:0x111111,roughness:0.80,metalness:0.10});
 
   function add(geo,mat,x=0,y=0,z=0,rx=0,ry=0,rz=0){
     const m=new THREE.Mesh(geo,mat);
@@ -549,65 +618,76 @@ function makeAstronaut(){
   }
 
   // ── ヘルメット ──
-  add(new THREE.SphereGeometry(0.42,18,16),sw, 0,1.10,0);
-  add(new THREE.BoxGeometry(0.52,0.30,0.09),vi, 0,1.10,0.37); // バイザー
+  add(new THREE.SphereGeometry(0.42,20,18),sw, 0,1.10,0);
+  // バイザー（曲面ガラス感 - 前面に張り出した半球）
+  const vg=new THREE.SphereGeometry(0.39,16,14,Math.PI*0.25,Math.PI*1.5,Math.PI*0.28,Math.PI*0.44);
+  add(vg,vi, 0,1.10,0.06);
+  // ヘルメット内側（少し暗め）
+  add(new THREE.SphereGeometry(0.38,16,14),new THREE.MeshStandardMaterial({color:0x222222,roughness:0.9,metalness:0,side:THREE.BackSide}), 0,1.10,0);
   add(new THREE.CylinderGeometry(0.38,0.36,0.10,16),rng, 0,0.78,0); // ネックリング
-  add(new THREE.CylinderGeometry(0.08,0.08,0.04,8),dk, 0,1.51,0); // 頂部アンテナ台
+  add(new THREE.CylinderGeometry(0.08,0.08,0.04,8),dk, 0,1.51,0); // 頂部台座
 
   // ── 首 ──
-  add(new THREE.CylinderGeometry(0.14,0.16,0.16,10),sw, 0,0.62,0);
+  add(new THREE.CylinderGeometry(0.14,0.16,0.16,12),sw, 0,0.62,0);
 
-  // ── 胸部 ──
-  add(new THREE.BoxGeometry(0.66,0.46,0.44),sw, 0,0.38,0); // 上胸
-  add(new THREE.BoxGeometry(0.62,0.32,0.42),sw, 0,0.04,0); // 腹部
+  // ── 胸部 HUT（Hard Upper Torso）──
+  add(new THREE.BoxGeometry(0.68,0.48,0.45),sw, 0,0.38,0);
+  add(new THREE.BoxGeometry(0.64,0.34,0.43),sw, 0,0.04,0);
   add(new THREE.CylinderGeometry(0.31,0.29,0.08,14),rng, 0,-0.14,0); // ウェストリング
 
-  // 胸部コントロールパネル
-  add(new THREE.BoxGeometry(0.22,0.26,0.05),pnl, 0,0.20,0.22);
-  add(new THREE.BoxGeometry(0.07,0.07,0.04),bl, -0.04,0.26,0.248); // ボタン青
-  add(new THREE.BoxGeometry(0.07,0.07,0.04),rd,  0.04,0.26,0.248); // ボタン赤
-  add(new THREE.BoxGeometry(0.14,0.04,0.03),
-    new THREE.MeshPhongMaterial({color:0x44aa44}), 0,0.14,0.248); // ステータスバー
+  // 胸コントロールパネル（DICU）
+  add(new THREE.BoxGeometry(0.24,0.28,0.06),pnl, 0,0.18,0.22);
+  add(new THREE.BoxGeometry(0.07,0.07,0.04),bl,  -0.04,0.25,0.257);
+  add(new THREE.BoxGeometry(0.07,0.07,0.04),rd,   0.04,0.25,0.257);
+  add(new THREE.BoxGeometry(0.15,0.04,0.03),grn,  0,0.12,0.257);
+  add(new THREE.BoxGeometry(0.20,0.03,0.03),new THREE.MeshStandardMaterial({color:0x555555,roughness:0.5}), 0,0.06,0.257);
 
   // ── PLSSバックパック ──
-  add(new THREE.BoxGeometry(0.52,0.64,0.22),dk, 0,0.22,-0.33);
-  add(new THREE.BoxGeometry(0.24,0.18,0.04),pnl, 0,0.06,-0.45); // PLSSパネル
+  add(new THREE.BoxGeometry(0.52,0.66,0.22),dk,  0,0.22,-0.33);
+  add(new THREE.BoxGeometry(0.24,0.18,0.04),pnl, 0,0.06,-0.45);
+  // PLSSコネクタ（ホース）
+  add(new THREE.CylinderGeometry(0.03,0.03,0.18,6),rng, 0.18,0.34,-0.43, 0,0,0.3);
 
   // 旗パッチ
   add(new THREE.BoxGeometry(0.18,0.09,0.05),rd, -0.35,0.46,0.15, 0,-0.5);
 
   // ── 肩リング ──
   [-1,1].forEach(s=>{
-    add(new THREE.CylinderGeometry(0.14,0.14,0.09,12),rng, s*0.39,0.40,0, 0,0,Math.PI/2);
+    add(new THREE.CylinderGeometry(0.145,0.145,0.09,14),rng, s*0.39,0.40,0, 0,0,Math.PI/2);
   });
 
-  // ── 腕（EVA遊泳姿勢：外側・前方に広げ肘を曲げる）──
+  // ── 腕（EVA遊泳姿勢・膨らみ感あり）──
   [-1,1].forEach(s=>{
-    // 上腕：外側に大きく開き、やや前方へ
-    add(new THREE.CylinderGeometry(0.13,0.12,0.32,10),sw,  s*0.44,0.30,0.04, -0.22,0,s*0.52);
+    // 上腕（膨らみ球 + シリンダー）
+    add(new THREE.SphereGeometry(0.145,12,10),sw,  s*0.44,0.30,0.04);
+    add(new THREE.CylinderGeometry(0.135,0.125,0.28,12),sw, s*0.46,0.22,0.06, -0.22,0,s*0.50);
     // 肘リング
-    add(new THREE.CylinderGeometry(0.12,0.12,0.08,10),rng, s*0.55,0.14,0.12, -0.22,0,s*0.38);
-    // 前腕：肘から前方に向けて折る
-    add(new THREE.CylinderGeometry(0.115,0.105,0.28,10),sw, s*0.60,0.02,0.20, -0.35,0,s*0.22);
+    add(new THREE.CylinderGeometry(0.125,0.125,0.09,12),rng, s*0.55,0.10,0.14, -0.22,0,s*0.36);
+    // 前腕
+    add(new THREE.SphereGeometry(0.128,12,10),sw,  s*0.58,0.04,0.18);
+    add(new THREE.CylinderGeometry(0.120,0.110,0.26,12),sw, s*0.61,-0.04,0.22, -0.35,0,s*0.20);
     // 手首リング
-    add(new THREE.CylinderGeometry(0.105,0.105,0.07,10),rng,s*0.63,-0.10,0.28, -0.35,0,s*0.15);
-    // グローブ：前方に差し出す
-    add(new THREE.SphereGeometry(0.115,10,8),dk, s*0.64,-0.18,0.34);
+    add(new THREE.CylinderGeometry(0.110,0.110,0.07,12),rng, s*0.63,-0.12,0.30, -0.35,0,s*0.14);
+    // グローブ
+    add(new THREE.SphereGeometry(0.120,12,10),dk, s*0.64,-0.20,0.35);
+    add(new THREE.BoxGeometry(0.08,0.05,0.14),dk, s*0.64,-0.25,0.42);
   });
 
-  // ── 脚（EVA遊泳姿勢：膝を軽く曲げて後方に浮かせる）──
+  // ── 脚（EVA遊泳姿勢・膨らみ感あり）──
   [-1,1].forEach(s=>{
-    // 太もも：やや後方・外側へ
-    add(new THREE.CylinderGeometry(0.148,0.132,0.38,10),sw,  s*0.17,-0.38,-0.05, 0.18,0,s*0.08);
+    // 太もも
+    add(new THREE.SphereGeometry(0.162,14,10),sw, s*0.17,-0.28,-0.04);
+    add(new THREE.CylinderGeometry(0.152,0.136,0.34,12),sw, s*0.17,-0.40,-0.06, 0.18,0,s*0.08);
     // 膝リング
-    add(new THREE.CylinderGeometry(0.132,0.132,0.08,10),rng, s*0.17,-0.62,-0.12, 0.18,0,s*0.06);
-    // すね：膝から後ろ上方へ（膝を曲げた表現）
-    add(new THREE.CylinderGeometry(0.128,0.118,0.36,10),sw,  s*0.17,-0.82,-0.22, -0.25,0,s*0.04);
+    add(new THREE.CylinderGeometry(0.136,0.136,0.09,12),rng, s*0.17,-0.62,-0.14, 0.18,0,s*0.06);
+    // すね
+    add(new THREE.SphereGeometry(0.138,12,10),sw, s*0.17,-0.72,-0.18);
+    add(new THREE.CylinderGeometry(0.132,0.122,0.32,12),sw, s*0.17,-0.84,-0.24, -0.25,0,s*0.04);
     // 足首リング
-    add(new THREE.CylinderGeometry(0.118,0.118,0.07,10),rng, s*0.17,-1.00,-0.32, -0.25,0,s*0.04);
-    // ブーツ：後ろ上方に浮く
-    add(new THREE.BoxGeometry(0.21,0.14,0.30),dk,  s*0.17,-1.12,-0.38);
-    add(new THREE.BoxGeometry(0.23,0.05,0.33),sole, s*0.17,-1.20,-0.38);
+    add(new THREE.CylinderGeometry(0.122,0.122,0.07,12),rng, s*0.17,-1.02,-0.34, -0.25,0,s*0.04);
+    // ブーツ
+    add(new THREE.BoxGeometry(0.22,0.15,0.31),dk,  s*0.17,-1.14,-0.40);
+    add(new THREE.BoxGeometry(0.24,0.05,0.33),sole, s*0.17,-1.22,-0.40);
   });
 
   return grp;
