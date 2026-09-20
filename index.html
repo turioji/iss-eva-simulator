@@ -200,6 +200,8 @@ canvas{display:block;}
 // ─── globals ───────────────────────────────────────
 let scene, camera, renderer, clock;
 let issGroup, playerGroup, earthMesh, tetherLine, tetherCurve, headLight;
+let ufoTimer=0;
+const UFO={state:'inactive',mesh:null,missiles:[],hoverTimer:0,attackTimer:0,lightTimer:0,lights:[]};
 let ambientLight, sunLight;
 let vel = new THREE.Vector3();
 let keys = {};
@@ -568,6 +570,147 @@ function makeTether(){
     new THREE.MeshBasicMaterial({color:0xcccccc,opacity:0.55,transparent:true})
   );
   scene.add(tetherLine);
+}
+
+
+// ─── UFO システム ───────────────────────────────────
+function makeUFO(){
+  const grp=new THREE.Group();
+  const metal=new THREE.MeshPhongMaterial({color:0x778899,specular:0xaabbcc,shininess:90});
+  const glass=new THREE.MeshPhongMaterial({color:0x44aacc,transparent:true,opacity:0.65,specular:0xaaddff,shininess:160});
+
+  // メイン円盤
+  grp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.2,0.45,20),metal)));
+  // 下部リング
+  grp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.6,0.18,20),metal),{position:new THREE.Vector3(0,-0.28,0)}));
+  // ドーム
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(1.2,14,10,0,Math.PI*2,0,Math.PI/2),glass);
+  dome.position.y=0.22; grp.add(dome);
+
+  // リムライト8個
+  UFO.lights=[];
+  for(let i=0;i<8;i++){
+    const a=i/8*Math.PI*2;
+    const lt=new THREE.Mesh(new THREE.SphereGeometry(0.18,6,6),
+      new THREE.MeshBasicMaterial({color:0x00ffff}));
+    lt.position.set(Math.cos(a)*2.2,-0.12,Math.sin(a)*2.2);
+    grp.add(lt); UFO.lights.push(lt);
+  }
+  return grp;
+}
+
+function spawnUFO(){
+  if(UFO.state!=='inactive'||G.stage<3||G.state!=='playing')return;
+  const a=Math.random()*Math.PI*2;
+  const start=new THREE.Vector3(Math.cos(a)*55,(Math.random()-0.5)*18,Math.sin(a)*55);
+  UFO.mesh=makeUFO();
+  UFO.mesh.position.copy(start);
+  UFO.state='approaching';
+  UFO.hoverTimer=0; UFO.attackTimer=0; UFO.missiles=[];
+  scene.add(UFO.mesh);
+  showDebrisWarning(start);
+  setTimeout(()=>showRadio('⚠ 正体不明の物体を確認！'),800);
+}
+
+function fireMissile(){
+  const m=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07,0.12,0.85,6),
+    new THREE.MeshBasicMaterial({color:0xff3300})
+  );
+  // エンジングロー
+  const glow=new THREE.Mesh(new THREE.SphereGeometry(0.18,6,6),
+    new THREE.MeshBasicMaterial({color:0xff8800}));
+  glow.position.y=-0.45; m.add(glow);
+
+  m.position.copy(UFO.mesh.position);
+  const dir=playerGroup.position.clone().sub(UFO.mesh.position).normalize();
+  dir.x+=(Math.random()-0.5)*0.25; dir.y+=(Math.random()-0.5)*0.15; dir.z+=(Math.random()-0.5)*0.25;
+  dir.normalize();
+  scene.add(m);
+  UFO.missiles.push({mesh:m,vel:dir.clone().multiplyScalar(0.22),life:0});
+}
+
+function updateUFO(dt){
+  if(UFO.state==='inactive')return;
+  const mesh=UFO.mesh;
+  mesh.rotation.y+=dt*1.8;
+
+  // ライト点滅
+  UFO.lightTimer+=dt;
+  const blink=Math.sin(UFO.lightTimer*10)>0;
+  UFO.lights.forEach(l=>{ l.material.color.setHex(blink?0x00ffff:0xff00ff); });
+
+  if(UFO.state==='approaching'){
+    const dir=playerGroup.position.clone().sub(mesh.position);
+    if(dir.length()>12){
+      mesh.position.addScaledVector(dir.normalize(),dt*9);
+    }else{
+      UFO.state='hovering'; UFO.hoverTimer=2.5;
+      showRadio('UFOが停止した！回避せよ！');
+    }
+  }
+  else if(UFO.state==='hovering'){
+    // UFOが少し揺れる
+    mesh.position.y+=Math.sin(UFO.lightTimer*3)*dt*0.5;
+    UFO.hoverTimer-=dt;
+    if(UFO.hoverTimer<=0){ UFO.state='attacking'; UFO.attackTimer=0; }
+  }
+  else if(UFO.state==='attacking'){
+    UFO.attackTimer+=dt;
+    // 1.5秒ごとにミサイル発射（最大3発）
+    if(UFO.missiles.length<4&&Math.floor(UFO.attackTimer/1.5)>Math.floor((UFO.attackTimer-dt)/1.5)){
+      fireMissile();
+      showRadio(['ミサイル発射！','回避しろ！','くらうな！'][Math.floor(Math.random()*3)]);
+    }
+    if(UFO.attackTimer>5){
+      UFO.state='retreating';
+      showRadio('UFOが離脱する');
+    }
+  }
+  else if(UFO.state==='retreating'){
+    mesh.position.addScaledVector(mesh.position.clone().normalize(),dt*18);
+    if(mesh.position.length()>90){
+      scene.remove(mesh);
+      UFO.state='inactive'; UFO.mesh=null;
+      UFO.missiles.forEach(m=>scene.remove(m.mesh));
+      UFO.missiles=[];
+    }
+  }
+
+  // ミサイル更新
+  for(let i=UFO.missiles.length-1;i>=0;i--){
+    const m=UFO.missiles[i];
+    // ホーミング（プレイヤーへ少し引き寄せ）
+    const toP=playerGroup.position.clone().sub(m.mesh.position).normalize().multiplyScalar(0.22);
+    m.vel.lerp(toP,dt*0.8); m.vel.normalize().multiplyScalar(0.22);
+    m.mesh.position.addScaledVector(m.vel,dt*60);
+    m.mesh.lookAt(m.mesh.position.clone().add(m.vel));
+    m.mesh.rotateX(Math.PI/2);
+    m.life+=dt;
+    // 命中判定
+    if(!G.invincible&&m.mesh.position.distanceTo(playerGroup.position)<1.0){
+      applyDamage(20);
+      scene.remove(m.mesh); UFO.missiles.splice(i,1);
+      showRadio('被弾！O₂が急減している！');
+      continue;
+    }
+    if(m.life>9){ scene.remove(m.mesh); UFO.missiles.splice(i,1); }
+  }
+}
+
+function checkUFOSpawn(dt){
+  if(G.stage<3||UFO.state!=='inactive'||G.state!=='playing')return;
+  ufoTimer+=dt;
+  // 90秒以上経過後、毎秒0.8%の確率で出現（レアキャラ）
+  if(ufoTimer>90&&Math.random()<dt*0.008){
+    ufoTimer=0; spawnUFO();
+  }
+}
+
+function resetUFO(){
+  if(UFO.mesh){ scene.remove(UFO.mesh); UFO.mesh=null; }
+  UFO.missiles.forEach(m=>scene.remove(m.mesh));
+  UFO.missiles=[]; UFO.state='inactive'; ufoTimer=0;
 }
 
 // ─── controls ──────────────────────────────────────
@@ -943,6 +1086,7 @@ function retryGame(){
   G.state='playing';G.combo=0;G.comboMul=1;G.score=0;
   G.invincible=false;G.dayTimer=0;G.isNight=false;
   G.debris.forEach(d=>scene.remove(d.mesh));G.debris=[];G.debrisTimer=0;
+  resetUFO();
   ambientLight.intensity=0.55;sunLight.intensity=2.4;
   document.getElementById('night').style.opacity='0';
   updateScoreHUD();updateO2HUD();
@@ -1052,6 +1196,8 @@ function update(dt){
 
   // デブリ・昼夜・無線
   updateDebris(dt);
+  checkUFOSpawn(dt);
+  updateUFO(dt);
   updateDayNight(dt);
   updateRadio(dt);
 
