@@ -549,7 +549,10 @@ function setupControls(){
       if(G.state==='cleared')  nextStage();
       if(G.state==='gameover') retryGame();
     }
-    if(e.code==='Space'&&G.state==='title') startEVA();
+    if(e.code==='Space'&&G.state==='title'){
+      startEVA();
+      renderer.domElement.requestPointerLock(); // keydown直後にリクエスト（タイムアウト不可）
+    }
   });
   document.addEventListener('keyup',e=>{keys[e.code]=false;});
   document.addEventListener('pointerlockchange',()=>{
@@ -929,7 +932,6 @@ function startEVA(){
   G.state='playing';
   G.debrisTimer=10;
   initMission();
-  setTimeout(()=>renderer.domElement.requestPointerLock(),800);
   showRadio('EVA開始。慎重に作業せよ');
 }
 
