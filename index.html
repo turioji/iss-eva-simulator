@@ -557,15 +557,18 @@ function makeAstronaut(){
 }
 
 // ─── tether ────────────────────────────────────────
+// 根本：ISS底部（キューポラ付近）に固定
+const TETHER_ATTACH = new THREE.Vector3(0, -1.5, -3.2);
 function makeTether(){
   tetherCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0,0,0),
-    new THREE.Vector3(0,-1,5),
-    new THREE.Vector3(0,0,14)
+    new THREE.Vector3(0,-1.5,-3.2),  // ISS底部 取付点
+    new THREE.Vector3(0,-4.5,-2),    // 下へ出る
+    new THREE.Vector3(0,-2,6),       // 外へ回る
+    new THREE.Vector3(0,3,14)        // 飛行士初期位置
   ]);
   tetherLine=new THREE.Mesh(
-    new THREE.TubeGeometry(tetherCurve,24,0.018,5,false),
-    new THREE.MeshBasicMaterial({color:0xcccccc,opacity:0.55,transparent:true})
+    new THREE.TubeGeometry(tetherCurve,32,0.018,5,false),
+    new THREE.MeshBasicMaterial({color:0xcccccc,opacity:0.60,transparent:true})
   );
   scene.add(tetherLine);
 }
@@ -1171,20 +1174,25 @@ function update(dt){
   // 修理ポイントのパルスアニメ
   if(G.state==='playing'||G.state==='repairing')updateRepairMeshes(dt);
 
-  // テザー（曲線：近いとたるみ、遠いと張る）
+  // テザー（ISS底部から下に出て飛行士へ向かう4点制御）
   const _to=playerGroup.position.clone();
   const _dist=_to.length();
   if(_dist>0.01){
-    const _sag=Math.max(0,(1-_dist/TETHER))*3.5;
-    const _mid=_to.clone().multiplyScalar(0.5);
-    _mid.y-=_sag;
-    // テザーはISSの外表面から出る（中心→プレイヤー方向に2ユニット）
-    const _issOut=_to.clone().normalize().multiplyScalar(2.0);
-    tetherCurve.points[0].copy(_issOut);
-    tetherCurve.points[1].copy(_mid);
-    tetherCurve.points[2].copy(_to);
+    // 根本：ISS底部（ISSの回転に追従）
+    const _attach=TETHER_ATTACH.clone().applyEuler(new THREE.Euler(0,issGroup.rotation.y,0));
+    // 出口：根本から下方向に出る（ISSをかわす）
+    const _exit=_attach.clone().add(new THREE.Vector3(0,-3.0,0));
+    // 弛み量：近いほど大きく
+    const _sag=Math.max(0,(1-_dist/TETHER))*2.5;
+    // 中間点：ISSの外を回り込んでプレイヤーへ
+    const _mid=_attach.clone().lerp(_to,0.55);
+    _mid.y=Math.min(_mid.y-_sag, _exit.y+1.0);
+    tetherCurve.points[0].copy(_attach);
+    tetherCurve.points[1].copy(_exit);
+    tetherCurve.points[2].copy(_mid);
+    tetherCurve.points[3].copy(_to);
     tetherLine.geometry.dispose();
-    tetherLine.geometry=new THREE.TubeGeometry(tetherCurve,24,0.018,5,false);
+    tetherLine.geometry=new THREE.TubeGeometry(tetherCurve,32,0.018,5,false);
   }
 
   // デブリ・昼夜・無線
