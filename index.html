@@ -534,25 +534,82 @@ function makeISS(){
 // ─── astronaut ─────────────────────────────────────
 function makeAstronaut(){
   const grp=new THREE.Group();
-  const sw=new THREE.MeshPhongMaterial({color:0xefefe5,specular:0x444444,shininess:18});
-  const vi=new THREE.MeshPhongMaterial({color:0xc88400,transparent:true,opacity:0.88,specular:0xffcc44,shininess:180});
-  const dk=new THREE.MeshPhongMaterial({color:0x1c1c1c});
-  const rd=new THREE.MeshPhongMaterial({color:0xcc2222});
-  function add(geo,mat,x=0,y=0,z=0,rx=0,ry=0,rz=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);grp.add(m);}
-  add(new THREE.SphereGeometry(0.36,14,14),sw,0,1.04,0);
-  add(new THREE.BoxGeometry(0.46,0.27,0.07),vi,0,1.04,0.31);
-  add(new THREE.CylinderGeometry(0.37,0.37,0.06,14),dk,0,0.78,0);
-  add(new THREE.BoxGeometry(0.58,0.72,0.39),sw,0,0.28,0);
-  add(new THREE.BoxGeometry(0.47,0.55,0.21),dk,0,0.30,-0.28);
-  add(new THREE.BoxGeometry(0.17,0.08,0.05),rd,-0.31,0.51,0.13,0,-0.52);
+  const sw =new THREE.MeshPhongMaterial({color:0xf0ede0,specular:0x777766,shininess:38});
+  const rng=new THREE.MeshPhongMaterial({color:0xd5d0bb,specular:0x999988,shininess:55});
+  const vi =new THREE.MeshPhongMaterial({color:0xcc8800,transparent:true,opacity:0.88,specular:0xffcc44,shininess:220});
+  const dk =new THREE.MeshPhongMaterial({color:0x1a1a1a,specular:0x333333,shininess:60});
+  const pnl=new THREE.MeshPhongMaterial({color:0x1e2233,specular:0x4455bb,shininess:90});
+  const rd =new THREE.MeshPhongMaterial({color:0xcc2222});
+  const bl =new THREE.MeshPhongMaterial({color:0x2244cc});
+  const sole=new THREE.MeshPhongMaterial({color:0x111111,specular:0x222222,shininess:30});
+
+  function add(geo,mat,x=0,y=0,z=0,rx=0,ry=0,rz=0){
+    const m=new THREE.Mesh(geo,mat);
+    m.position.set(x,y,z);m.rotation.set(rx,ry,rz);grp.add(m);
+  }
+
+  // ── ヘルメット ──
+  add(new THREE.SphereGeometry(0.42,18,16),sw, 0,1.10,0);
+  add(new THREE.BoxGeometry(0.52,0.30,0.09),vi, 0,1.10,0.37); // バイザー
+  add(new THREE.CylinderGeometry(0.38,0.36,0.10,16),rng, 0,0.78,0); // ネックリング
+  add(new THREE.CylinderGeometry(0.08,0.08,0.04,8),dk, 0,1.51,0); // 頂部アンテナ台
+
+  // ── 首 ──
+  add(new THREE.CylinderGeometry(0.14,0.16,0.16,10),sw, 0,0.62,0);
+
+  // ── 胸部 ──
+  add(new THREE.BoxGeometry(0.66,0.46,0.44),sw, 0,0.38,0); // 上胸
+  add(new THREE.BoxGeometry(0.62,0.32,0.42),sw, 0,0.04,0); // 腹部
+  add(new THREE.CylinderGeometry(0.31,0.29,0.08,14),rng, 0,-0.14,0); // ウェストリング
+
+  // 胸部コントロールパネル
+  add(new THREE.BoxGeometry(0.22,0.26,0.05),pnl, 0,0.20,0.22);
+  add(new THREE.BoxGeometry(0.07,0.07,0.04),bl, -0.04,0.26,0.248); // ボタン青
+  add(new THREE.BoxGeometry(0.07,0.07,0.04),rd,  0.04,0.26,0.248); // ボタン赤
+  add(new THREE.BoxGeometry(0.14,0.04,0.03),
+    new THREE.MeshPhongMaterial({color:0x44aa44}), 0,0.14,0.248); // ステータスバー
+
+  // ── PLSSバックパック ──
+  add(new THREE.BoxGeometry(0.52,0.64,0.22),dk, 0,0.22,-0.33);
+  add(new THREE.BoxGeometry(0.24,0.18,0.04),pnl, 0,0.06,-0.45); // PLSSパネル
+
+  // 旗パッチ
+  add(new THREE.BoxGeometry(0.18,0.09,0.05),rd, -0.35,0.46,0.15, 0,-0.5);
+
+  // ── 肩リング ──
   [-1,1].forEach(s=>{
-    add(new THREE.CylinderGeometry(0.13,0.11,0.55,8),sw,s*0.41,0.23,0,0,0,s*0.30);
-    add(new THREE.SphereGeometry(0.11,8,8),dk,s*0.53,-0.01,0);
+    add(new THREE.CylinderGeometry(0.14,0.14,0.09,12),rng, s*0.39,0.40,0, 0,0,Math.PI/2);
   });
+
+  // ── 腕（EVA遊泳姿勢：外側・前方に広げ肘を曲げる）──
   [-1,1].forEach(s=>{
-    add(new THREE.CylinderGeometry(0.13,0.11,0.58,8),sw,s*0.15,-0.30,0);
-    add(new THREE.BoxGeometry(0.18,0.13,0.27),dk,s*0.15,-0.62,0.04);
+    // 上腕：外側に大きく開き、やや前方へ
+    add(new THREE.CylinderGeometry(0.13,0.12,0.32,10),sw,  s*0.44,0.30,0.04, -0.22,0,s*0.52);
+    // 肘リング
+    add(new THREE.CylinderGeometry(0.12,0.12,0.08,10),rng, s*0.55,0.14,0.12, -0.22,0,s*0.38);
+    // 前腕：肘から前方に向けて折る
+    add(new THREE.CylinderGeometry(0.115,0.105,0.28,10),sw, s*0.60,0.02,0.20, -0.35,0,s*0.22);
+    // 手首リング
+    add(new THREE.CylinderGeometry(0.105,0.105,0.07,10),rng,s*0.63,-0.10,0.28, -0.35,0,s*0.15);
+    // グローブ：前方に差し出す
+    add(new THREE.SphereGeometry(0.115,10,8),dk, s*0.64,-0.18,0.34);
   });
+
+  // ── 脚（EVA遊泳姿勢：膝を軽く曲げて後方に浮かせる）──
+  [-1,1].forEach(s=>{
+    // 太もも：やや後方・外側へ
+    add(new THREE.CylinderGeometry(0.148,0.132,0.38,10),sw,  s*0.17,-0.38,-0.05, 0.18,0,s*0.08);
+    // 膝リング
+    add(new THREE.CylinderGeometry(0.132,0.132,0.08,10),rng, s*0.17,-0.62,-0.12, 0.18,0,s*0.06);
+    // すね：膝から後ろ上方へ（膝を曲げた表現）
+    add(new THREE.CylinderGeometry(0.128,0.118,0.36,10),sw,  s*0.17,-0.82,-0.22, -0.25,0,s*0.04);
+    // 足首リング
+    add(new THREE.CylinderGeometry(0.118,0.118,0.07,10),rng, s*0.17,-1.00,-0.32, -0.25,0,s*0.04);
+    // ブーツ：後ろ上方に浮く
+    add(new THREE.BoxGeometry(0.21,0.14,0.30),dk,  s*0.17,-1.12,-0.38);
+    add(new THREE.BoxGeometry(0.23,0.05,0.33),sole, s*0.17,-1.20,-0.38);
+  });
+
   return grp;
 }
 
