@@ -213,6 +213,62 @@ let cameraShakeTime = 0, cameraShakeAmt = 0;
 
 const TETHER = 42, THRUST = 0.011, DAMP = 0.984;
 
+
+// ─── 無線オーディオシステム ─────────────────────────
+let audioCtx=null;
+
+function initAudio(){
+  if(audioCtx)return;
+  try{ audioCtx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+}
+
+function playBeep(freq=1100,dur=0.09,vol=0.22){
+  if(!audioCtx)return;
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.frequency.value=freq; osc.type='sine';
+  gain.gain.setValueAtTime(vol,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime+dur);
+}
+
+function playStatic(dur=0.07,vol=0.10){
+  if(!audioCtx)return;
+  const sz=Math.floor(audioCtx.sampleRate*dur);
+  const buf=audioCtx.createBuffer(1,sz,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<sz;i++) d[i]=(Math.random()*2-1)*0.4;
+  const src=audioCtx.createBufferSource();
+  const flt=audioCtx.createBiquadFilter();
+  flt.type='bandpass'; flt.frequency.value=1800; flt.Q.value=0.6;
+  const gain=audioCtx.createGain();
+  gain.gain.setValueAtTime(vol,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  src.buffer=buf; src.connect(flt); flt.connect(gain); gain.connect(audioCtx.destination);
+  src.start();
+}
+
+function speakMsg(msg){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(msg);
+  u.lang='ja-JP'; u.rate=1.05; u.pitch=0.88; u.volume=0.85;
+  // 男性日本語音声を優先選択
+  const voices=window.speechSynthesis.getVoices();
+  const jaVoice=voices.find(v=>v.lang.startsWith('ja')&&/male|man|haru|keita|ichiro/i.test(v.name))
+               ||voices.find(v=>v.lang.startsWith('ja'));
+  if(jaVoice) u.voice=jaVoice;
+  window.speechSynthesis.speak(u);
+}
+
+function playRadioSound(msg){
+  // ピッ → ザー → 読み上げ → ザー → ピッ
+  playBeep(1200,0.08,0.20);
+  setTimeout(()=>playStatic(0.06,0.12),90);
+  setTimeout(()=>speakMsg(msg),180);
+}
+
 // ─── ゲーム状態 ────────────────────────────────────
 const G = {
   state: 'title',    // title | playing | repairing | gameover | cleared
@@ -863,6 +919,7 @@ function setupControls(){
       if(G.state==='gameover') retryGame();
     }
     if(e.code==='Space'&&G.state==='title'){
+      initAudio();
       startEVA();
       renderer.domElement.requestPointerLock(); // keydown直後にリクエスト（タイムアウト不可）
     }
@@ -1167,7 +1224,8 @@ function updateRadio(dt){
   if(G.radioQueue.length>0&&G.radioTimer<=0){
     const msg=G.radioQueue.shift();
     const el=document.getElementById('radio');
-    el.textContent=`📡 ${msg}`;el.style.opacity='1';G.radioTimer=3;
+    el.textContent=`📡 ${msg}`;el.style.opacity='1';G.radioTimer=4;
+    playRadioSound(msg); // ビープ＋音声読み上げ
   }
 }
 
@@ -1261,6 +1319,7 @@ function nextStage(){
 
 // ─── start ─────────────────────────────────────────
 function startEVA(){
+  initAudio(); // ユーザー操作後に初期化（ブラウザ制約）
   const ov=document.getElementById('overlay');
   ov.style.opacity='0';ov.style.pointerEvents='none';
   setTimeout(()=>ov.style.display='none',700);
