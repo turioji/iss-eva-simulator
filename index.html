@@ -1001,8 +1001,13 @@ function updateDayNight(dt){
   const wasNight=G.isNight;
   G.isNight=phase>0.5;
   if(G.isNight!==wasNight){
-    if(G.isNight){showRadio('日没だ。ライトを点けて');}
-    else{showRadio('日の出。視界良好');}
+    if(G.isNight){
+      showRadio('日没だ。ライトを点けて');
+      if(headLight) headLight.intensity=2.5; // アナウンスと同時に即点灯
+    }else{
+      showRadio('日の出。視界良好');
+      if(headLight) headLight.intensity=0;   // 日の出で即消灯
+    }
   }
   const nightF=G.isNight?Math.min(1,(phase-0.5)*2):0;
   const smoothN=nightF*nightF*(3-2*nightF);
@@ -1011,11 +1016,8 @@ function updateDayNight(dt){
   document.getElementById('night').style.opacity=smoothN*0.62;
   // 夜になると都市の光が輝く
   if(earthMesh&&earthMesh.material) earthMesh.material.emissiveIntensity=smoothN*0.8;
-  // ヘッドライト自動点灯（PointLightはプレイヤー位置に追従）
-  if(headLight){
-    headLight.intensity=Math.min(2.5, smoothN*8);
-    headLight.position.copy(playerGroup.position);
-  }
+  // ヘッドライト位置更新（強度は昼夜切替時に設定）
+  if(headLight) headLight.position.copy(playerGroup.position);
 }
 
 // ─── 無線 / スコア ──────────────────────────────────
