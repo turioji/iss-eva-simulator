@@ -929,10 +929,12 @@ function startEVA(){
   ['xhair','o2wrap','ctrlhint','lockhint'].forEach(id=>document.getElementById(id).classList.add('on'));
   document.getElementById('score-hud').classList.add('on');
   document.getElementById('p-mission').style.display='block';
+  yaw=0; pitch=0; // 開始時に視点リセット
   G.state='playing';
   G.debrisTimer=10;
   initMission();
   showRadio('EVA開始。慎重に作業せよ');
+  renderer.domElement.requestPointerLock(); // クリックイベントから呼ばれるので即時OK
 }
 
 // ─── update ────────────────────────────────────────
