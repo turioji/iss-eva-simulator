@@ -199,7 +199,7 @@ canvas{display:block;}
 
 // ─── globals ───────────────────────────────────────
 let scene, camera, renderer, clock;
-let issGroup, playerGroup, earthMesh, tetherLine, tetherCurve;
+let issGroup, playerGroup, earthMesh, tetherLine, tetherCurve, headLight;
 let ambientLight, sunLight;
 let vel = new THREE.Vector3();
 let keys = {};
@@ -379,7 +379,14 @@ function init(){
   makeStars(); makeEarth();
   issGroup=makeISS(); scene.add(issGroup);
   playerGroup=makeAstronaut(); playerGroup.position.set(0,3,14); scene.add(playerGroup);
-  makeTether(); setupControls();
+  makeTether();
+  // ヘッドライト（夜間自動点灯）
+  headLight=new THREE.SpotLight(0xffeedd,0,60,Math.PI/6,0.4,1.5);
+  headLight.position.set(0,3,14);
+  scene.add(headLight);
+  headLight.target.position.set(0,3,0);
+  scene.add(headLight.target);
+  setupControls();
 
   window.addEventListener('resize',()=>{
     camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
@@ -818,6 +825,18 @@ function updateDayNight(dt){
   document.getElementById('night').style.opacity=smoothN*0.62;
   // 夜になると都市の光が輝く
   if(earthMesh&&earthMesh.material) earthMesh.material.emissiveIntensity=smoothN*0.8;
+  // ヘッドライト自動点灯
+  if(headLight){
+    headLight.intensity=smoothN*2.2;
+    headLight.position.copy(playerGroup.position);
+    // プレイヤーが向いている方向を照らす
+    headLight.target.position.set(
+      playerGroup.position.x+Math.sin(yaw)*8,
+      playerGroup.position.y-Math.sin(pitch)*8,
+      playerGroup.position.z-Math.cos(yaw)*8
+    );
+    headLight.target.updateMatrixWorld();
+  }
 }
 
 // ─── 無線 / スコア ──────────────────────────────────
