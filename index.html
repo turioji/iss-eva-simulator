@@ -757,18 +757,27 @@ function getISSWorldPos(lx,ly,lz){
 }
 
 function checkISSCollision(){
-  if(G.invincible||G.state!=='playing')return;
-  const pp=playerGroup.position,pr=0.5;
+  if(G.state!=='playing')return;
+  const pp=playerGroup.position, pr=0.5;
   for(const z of ISS_ZONES){
     const wp=getISSWorldPos(...z.p);
-    if(pp.distanceTo(wp)<z.r+pr){
+    const dist=pp.distanceTo(wp);
+    if(dist<z.r+pr){
+      // 押し出し方向（ISSゾーン中心→飛行士）
+      const dir=dist<0.01
+        ? new THREE.Vector3(0,1,0)
+        : pp.clone().sub(wp).normalize();
+      // 常に外へ押し出す（無敵中でも埋まらないように）
+      playerGroup.position.copy(
+        wp.clone().add(dir.clone().multiplyScalar(z.r+pr+0.25))
+      );
+      // 速度を反射方向に
       const spd=vel.length();
-      const dmg=Math.max(5,Math.min(35,spd*200));
-      // 跳ね返り
-      const bounce=pp.clone().sub(wp).normalize();
-      vel.copy(bounce.multiplyScalar(Math.max(0.05,spd*0.45)));
-      playerGroup.position.copy(wp.clone().add(bounce.multiplyScalar(z.r+pr+0.15)));
-      applyDamage(dmg);
+      vel.copy(dir.clone().multiplyScalar(Math.max(0.08,spd*0.5)));
+      // ダメージは無敵中以外のみ
+      if(!G.invincible){
+        applyDamage(Math.max(5,Math.min(35,spd*200)));
+      }
       return;
     }
   }
