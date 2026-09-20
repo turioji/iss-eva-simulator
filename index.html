@@ -162,6 +162,7 @@ canvas{display:block;}
   <div class="osub">Altitude 408 km · Orbital velocity 27,635 km/h</div>
   <div id="issbox">🛰 ISS 実時刻位置データ 取得中…</div>
   <button id="startbtn" onclick="startEVA()">🧑‍🚀 &nbsp; EVA 開始</button>
+  <div style="font-family:'Courier New',monospace;font-size:10px;color:rgba(0,232,204,0.35);margin-top:8px;letter-spacing:1px;">または <span style="border:1px solid rgba(0,232,204,0.3);padding:1px 6px;border-radius:2px;">SPACE</span> キー</div>
   <div class="okeys">
     <span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> スラスター &nbsp;&nbsp;
     <span class="k">Q</span><span class="k">E</span> or <span class="k">Z</span><span class="k">C</span> 上下 &nbsp; マウス 視点<br>
@@ -282,6 +283,8 @@ function updateISSHUD(d,isApprox){
   document.getElementById('h-lng').textContent=`LNG  ${d.lng.toFixed(3)}°`;
   document.getElementById('h-alt').textContent=`ALT  ${d.alt.toFixed(1)} km`;
   document.getElementById('h-vel').textContent=`VEL  ${Math.round(d.vel).toLocaleString()} km/h`;
+  // 主要都市上空チェック
+  if(typeof checkCityOverpass === 'function') checkCityOverpass(d.lat, d.lng);
 }
 async function fetchISS(){
   try{
@@ -295,6 +298,63 @@ async function fetchISS(){
   updateISSHUD(calcISSPos(),true);
 }
 fetchISS(); setInterval(fetchISS,5000);
+
+// ─── 主要都市上空通過チェック ───────────────────────
+const CITIES = [
+  {name:'東京',        lat:35.7,  lng:139.7},
+  {name:'大阪',        lat:34.7,  lng:135.5},
+  {name:'北京',        lat:39.9,  lng:116.4},
+  {name:'上海',        lat:31.2,  lng:121.5},
+  {name:'ソウル',      lat:37.6,  lng:127.0},
+  {name:'バンコク',    lat:13.8,  lng:100.5},
+  {name:'シンガポール',lat: 1.3,  lng:103.8},
+  {name:'ムンバイ',    lat:19.1,  lng:72.9 },
+  {name:'ドバイ',      lat:25.2,  lng:55.3 },
+  {name:'カイロ',      lat:30.1,  lng:31.2 },
+  {name:'ナイロビ',    lat:-1.3,  lng:36.8 },
+  {name:'ヨハネスブルグ',lat:-26.2,lng:28.0},
+  {name:'ロンドン',    lat:51.5,  lng:-0.1 },
+  {name:'パリ',        lat:48.9,  lng:2.3  },
+  {name:'ベルリン',    lat:52.5,  lng:13.4 },
+  {name:'マドリード',  lat:40.4,  lng:-3.7 },
+  {name:'ローマ',      lat:41.9,  lng:12.5 },
+  {name:'モスクワ',    lat:55.8,  lng:37.6 },
+  {name:'ニューヨーク',lat:40.7,  lng:-74.0},
+  {name:'ロサンゼルス',lat:34.1,  lng:-118.2},
+  {name:'シカゴ',      lat:41.9,  lng:-87.6},
+  {name:'メキシコシティ',lat:19.4, lng:-99.1},
+  {name:'リオデジャネイロ',lat:-22.9,lng:-43.2},
+  {name:'サンパウロ',  lat:-23.5, lng:-46.6},
+  {name:'ブエノスアイレス',lat:-34.6,lng:-58.4},
+  {name:'シドニー',    lat:-33.9, lng:151.2},
+  {name:'メルボルン',  lat:-37.8, lng:145.0},
+  {name:'ホノルル',    lat:21.3,  lng:-157.8},
+];
+
+let lastCity = '';
+let cityCheckTimer = 0;
+
+function checkCityOverpass(lat, lng) {
+  cityCheckTimer -= 1;
+  if(cityCheckTimer > 0) return;
+  cityCheckTimer = 30; // 30秒ごとにチェック
+
+  const RANGE = 4.5; // ±4.5度以内で通過判定
+  for(const city of CITIES) {
+    const dlat = Math.abs(lat - city.lat);
+    let dlng  = Math.abs(lng - city.lng);
+    if(dlng > 180) dlng = 360 - dlng;
+    if(dlat < RANGE && dlng < RANGE) {
+      if(lastCity !== city.name) {
+        lastCity = city.name;
+        showRadio(`現在 ${city.name} 上空を通過中`);
+      }
+      return;
+    }
+  }
+  lastCity = ''; // 都市圏を外れたらリセット
+}
+
 
 // ─── scene setup ───────────────────────────────────
 function init(){
@@ -476,6 +536,7 @@ function setupControls(){
       if(G.state==='cleared')  nextStage();
       if(G.state==='gameover') retryGame();
     }
+    if(e.code==='Space'&&G.state==='title') startEVA();
   });
   document.addEventListener('keyup',e=>{keys[e.code]=false;});
   document.addEventListener('pointerlockchange',()=>{
