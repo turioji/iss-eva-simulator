@@ -747,7 +747,8 @@ function setupControls(){
     pitch=Math.max(-1.28,Math.min(1.28,pitch));
   },{passive:true});
   renderer.domElement.addEventListener('click',()=>{
-    if(G.state==='playing'&&!isLocked)renderer.domElement.requestPointerLock();
+    if((G.state==='playing'||G.state==='repairing')&&!isLocked)
+      renderer.domElement.requestPointerLock().catch(()=>{});
   });
 }
 
@@ -758,27 +759,34 @@ function getISSWorldPos(lx,ly,lz){
 
 function checkISSCollision(){
   if(G.state!=='playing')return;
-  const pp=playerGroup.position, pr=0.5;
-  for(const z of ISS_ZONES){
-    const wp=getISSWorldPos(...z.p);
-    const dist=pp.distanceTo(wp);
-    if(dist<z.r+pr){
-      // 押し出し方向（ISSゾーン中心→飛行士）
-      const dir=dist<0.01
-        ? new THREE.Vector3(0,1,0)
-        : pp.clone().sub(wp).normalize();
-      // 常に外へ押し出す（無敵中でも埋まらないように）
-      playerGroup.position.copy(
-        wp.clone().add(dir.clone().multiplyScalar(z.r+pr+0.25))
-      );
-      // 速度を反射方向に
-      const spd=vel.length();
-      vel.copy(dir.clone().multiplyScalar(Math.max(0.08,spd*0.5)));
-      // ダメージは無敵中以外のみ
-      if(!G.invincible){
-        applyDamage(Math.max(5,Math.min(35,spd*200)));
+  const pr=0.5;
+  let hit=false;
+  let bounceDir=new THREE.Vector3();
+
+  // 最大5回繰り返して完全に押し出す（複数ゾーン重複対策）
+  for(let iter=0;iter<5;iter++){
+    let collided=false;
+    for(const z of ISS_ZONES){
+      const wp=getISSWorldPos(...z.p);
+      const dist=playerGroup.position.distanceTo(wp);
+      if(dist<z.r+pr){
+        const dir=dist<0.01
+          ? new THREE.Vector3(0,1,0)
+          : playerGroup.position.clone().sub(wp).normalize();
+        playerGroup.position.copy(wp.clone().add(dir.clone().multiplyScalar(z.r+pr+0.3)));
+        bounceDir.add(dir);
+        collided=true; hit=true;
       }
-      return;
+    }
+    if(!collided)break;
+  }
+
+  if(hit){
+    const spd=vel.length();
+    const bd=bounceDir.lengthSq()>0 ? bounceDir.normalize() : new THREE.Vector3(0,1,0);
+    vel.copy(bd.multiplyScalar(Math.max(0.1,spd*0.5)));
+    if(!G.invincible){
+      applyDamage(Math.max(5,Math.min(35,spd*200)));
     }
   }
 }
@@ -1122,10 +1130,11 @@ function startEVA(){
   document.getElementById('p-mission').style.display='block';
   yaw=0; pitch=0; // 開始時に視点リセット
   G.state='playing';
+  G.invincible=true; G.invincTimer=3.0; // スタート時3秒無敵（衝突確認猶予）
   G.debrisTimer=10;
   initMission();
   showRadio('EVA開始。慎重に作業せよ');
-  renderer.domElement.requestPointerLock(); // クリックイベントから呼ばれるので即時OK
+  renderer.domElement.requestPointerLock().catch(()=>{}); // クリックイベントから呼ばれるので即時OK
 }
 
 // ─── update ────────────────────────────────────────
