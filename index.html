@@ -199,7 +199,7 @@ canvas{display:block;}
 
 // ─── globals ───────────────────────────────────────
 let scene, camera, renderer, clock;
-let issGroup, playerGroup, earthMesh, tetherLine;
+let issGroup, playerGroup, earthMesh, tetherLine, tetherCurve;
 let ambientLight, sunLight;
 let vel = new THREE.Vector3();
 let keys = {};
@@ -526,8 +526,13 @@ function makeAstronaut(){
 
 // ─── tether ────────────────────────────────────────
 function makeTether(){
+  tetherCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0,0,0),
+    new THREE.Vector3(0,-1,5),
+    new THREE.Vector3(0,0,14)
+  ]);
   tetherLine=new THREE.Mesh(
-    new THREE.CylinderGeometry(0.018,0.018,1,5),
+    new THREE.TubeGeometry(tetherCurve,24,0.018,5,false),
     new THREE.MeshBasicMaterial({color:0xcccccc,opacity:0.55,transparent:true})
   );
   scene.add(tetherLine);
@@ -556,6 +561,12 @@ function setupControls(){
     yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;
     pitch=Math.max(-1.28,Math.min(1.28,pitch));
   });
+  // ホイールで上下視点（上回し=宇宙、下回し=地球）
+  document.addEventListener('wheel',e=>{
+    if(G.state!=='playing'&&G.state!=='repairing')return;
+    pitch+=e.deltaY*0.001;
+    pitch=Math.max(-1.28,Math.min(1.28,pitch));
+  },{passive:true});
   renderer.domElement.addEventListener('click',()=>{
     if(G.state==='playing'&&!isLocked)renderer.domElement.requestPointerLock();
   });
@@ -942,10 +953,14 @@ function update(dt){
     vel.multiplyScalar(DAMP);
     playerGroup.position.addScaledVector(vel,dt*60);
 
-    if(tetherDist>TETHER){playerGroup.position.normalize().multiplyScalar(TETHER);vel.multiplyScalar(0.12);showRadio('命綱の限界！引き戻す');}
-    if(tetherDist<2.4){playerGroup.position.normalize().multiplyScalar(2.4);vel.multiplyScalar(0.1);}
+    // 移動後の距離で判定（移動前だと1フレーム遅れて突き抜ける）
+    const postDist=playerGroup.position.length();
+    if(postDist>TETHER){playerGroup.position.normalize().multiplyScalar(TETHER);vel.multiplyScalar(0.12);showRadio('命綱の限界！引き戻す');}
+    if(postDist<2.4){playerGroup.position.normalize().multiplyScalar(2.4);vel.multiplyScalar(0.1);}
     if(playerGroup.position.y<-34){playerGroup.position.y=-34;vel.y=Math.abs(vel.y)*0.3;}
+    playerGroup.rotation.order='YXZ';
     playerGroup.rotation.y=yaw+Math.PI;
+    playerGroup.rotation.x=-pitch*1.1;
 
     // O2消費
     const o2DrainRate=0.055+G.stage*0.005;
@@ -973,13 +988,18 @@ function update(dt){
   // 修理ポイントのパルスアニメ
   if(G.state==='playing'||G.state==='repairing')updateRepairMeshes(dt);
 
-  // テザー
+  // テザー（曲線：近いとたるみ、遠いと張る）
   const _to=playerGroup.position.clone();
-  const _dir=_to.clone();const _len=_dir.length();
-  if(_len>0.01){
-    tetherLine.position.copy(new THREE.Vector3().lerp(_to,0.5));
-    tetherLine.scale.set(1,_len,1);
-    tetherLine.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),_dir.normalize());
+  const _dist=_to.length();
+  if(_dist>0.01){
+    const _sag=Math.max(0,(1-_dist/TETHER))*3.5;
+    const _mid=_to.clone().multiplyScalar(0.5);
+    _mid.y-=_sag;
+    tetherCurve.points[0].set(0,0,0);
+    tetherCurve.points[1].copy(_mid);
+    tetherCurve.points[2].copy(_to);
+    tetherLine.geometry.dispose();
+    tetherLine.geometry=new THREE.TubeGeometry(tetherCurve,24,0.018,5,false);
   }
 
   // デブリ・昼夜・無線
