@@ -472,6 +472,10 @@ function setupControls(){
     keys[e.code]=true;
     if(GKEYS.has(e.code))e.preventDefault();
     if(e.code==='Escape'&&G.state==='repairing')cancelRepair();
+    if(e.code==='Enter'){
+      if(G.state==='cleared')  nextStage();
+      if(G.state==='gameover') retryGame();
+    }
   });
   document.addEventListener('keyup',e=>{keys[e.code]=false;});
   document.addEventListener('pointerlockchange',()=>{
