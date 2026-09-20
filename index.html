@@ -408,11 +408,9 @@ function init(){
   playerGroup=makeAstronaut(); playerGroup.position.set(0,3,14); scene.add(playerGroup);
   makeTether();
   // ヘッドライト（夜間自動点灯）
-  headLight=new THREE.SpotLight(0xffeedd,0,60,Math.PI/6,0.4,1.5);
+  headLight=new THREE.PointLight(0xffeedd,0,40,1.5);
   headLight.position.set(0,3,14);
   scene.add(headLight);
-  headLight.target.position.set(0,3,0);
-  scene.add(headLight.target);
   setupControls();
 
   window.addEventListener('resize',()=>{
@@ -993,17 +991,10 @@ function updateDayNight(dt){
   document.getElementById('night').style.opacity=smoothN*0.62;
   // 夜になると都市の光が輝く
   if(earthMesh&&earthMesh.material) earthMesh.material.emissiveIntensity=smoothN*0.8;
-  // ヘッドライト自動点灯
+  // ヘッドライト自動点灯（PointLightはプレイヤー位置に追従）
   if(headLight){
-    headLight.intensity=smoothN*2.2;
+    headLight.intensity=Math.min(2.5, smoothN*8);
     headLight.position.copy(playerGroup.position);
-    // プレイヤーが向いている方向を照らす
-    headLight.target.position.set(
-      playerGroup.position.x+Math.sin(yaw)*8,
-      playerGroup.position.y-Math.sin(pitch)*8,
-      playerGroup.position.z-Math.cos(yaw)*8
-    );
-    headLight.target.updateMatrixWorld();
   }
 }
 
@@ -1187,7 +1178,9 @@ function update(dt){
     const _sag=Math.max(0,(1-_dist/TETHER))*3.5;
     const _mid=_to.clone().multiplyScalar(0.5);
     _mid.y-=_sag;
-    tetherCurve.points[0].set(0,0,0);
+    // テザーはISSの外表面から出る（中心→プレイヤー方向に2ユニット）
+    const _issOut=_to.clone().normalize().multiplyScalar(2.0);
+    tetherCurve.points[0].copy(_issOut);
     tetherCurve.points[1].copy(_mid);
     tetherCurve.points[2].copy(_to);
     tetherLine.geometry.dispose();
